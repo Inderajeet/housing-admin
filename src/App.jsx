@@ -1,5 +1,5 @@
 import React, { useState, createContext, useContext } from 'react';
-
+import { savePlotLayout } from './api/plot.api';
 // Pages
 import Dashboard from './pages/Dashboard';
 import RentProperties from './pages/RentProperties';
@@ -13,7 +13,6 @@ import PlotLayoutEditor from './pages/PlotLayoutEditor';
 // Components
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
-import ExportModal from './components/ExportModal';
 
 const AppContext = createContext(null);
 
@@ -26,7 +25,9 @@ export const useApp = () => {
 const App = () => {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [activeProject, setActiveProject] = useState(null);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const updatePlotLayout = async (propertyId, layout) => {
+    await savePlotLayout(propertyId, layout);
+  };
 
   const renderContent = () => {
     if (activeProject) return <PlotLayoutEditor />;
@@ -54,7 +55,8 @@ const App = () => {
   return (
     <AppContext.Provider value={{
       activeProject,
-      setActiveProject
+      setActiveProject,
+      updatePlotLayout
     }}>
       <div className="flex h-screen w-full bg-gray-50 font-sans">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -62,7 +64,6 @@ const App = () => {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Navbar
             title={activeProject ? `Layout Architect: ${activeProject.layout_name}` : activeTab}
-            onExport={() => setShowExportModal(true)}
           />
 
           <main className="flex-1 overflow-y-auto p-6 md:p-8">
@@ -72,9 +73,6 @@ const App = () => {
           </main>
         </div>
 
-        {showExportModal && (
-          <ExportModal onClose={() => setShowExportModal(false)} />
-        )}
       </div>
     </AppContext.Provider>
   );

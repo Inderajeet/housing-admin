@@ -204,7 +204,7 @@ const PlotLayoutEditor = () => {
 
   const handleSave = () => {
     if (activeProject) {
-      updatePlotLayout(activeProject.plot_project_id, elements);
+      updatePlotLayout(activeProject.project_id, elements);
       setShowSaveSuccess(true);
       setTimeout(() => setShowSaveSuccess(false), 3000);
     }
