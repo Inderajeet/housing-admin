@@ -4,7 +4,6 @@ import Loader from '../components/Loader';
 
 import {
   getBuyers,
-  createBuyer,
   updateBuyer,
   getBuyerEnquiries
 } from '../api/buyer.api';
@@ -29,7 +28,7 @@ const Buyers = () => {
 
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [mode, setMode] = useState('add');
+  const [mode, setMode] = useState('view'); // Default to view
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [enquiries, setEnquiries] = useState([]);
@@ -39,21 +38,17 @@ const Buyers = () => {
 
   const fetchBuyers = async () => {
     setLoading(true);
-    const data = await getBuyers();
-    setBuyers(data);
-    setLoading(false);
+    try {
+      const data = await getBuyers();
+      setBuyers(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchBuyers();
   }, []);
-
-  const openAdd = () => {
-    setSelected(null);
-    setForm(EMPTY_FORM);
-    setMode('add');
-    setIsModalOpen(true);
-  };
 
   const openEdit = async (b) => {
     setSelected(b);
@@ -73,22 +68,21 @@ const Buyers = () => {
 
   const loadEnquiries = async (id) => {
     setEnqLoading(true);
-    const data = await getBuyerEnquiries(id);
-    setEnquiries(data);
-    setEnqLoading(false);
+    try {
+      const data = await getBuyerEnquiries(id);
+      setEnquiries(data);
+    } finally {
+      setEnqLoading(false);
+    }
   };
 
   const handleSave = async () => {
     if (mode === 'view') return;
-
     if (selected?.buyer_id) {
       await updateBuyer(selected.buyer_id, form);
-    } else {
-      await createBuyer(form);
+      fetchBuyers();
+      setIsModalOpen(false);
     }
-
-    fetchBuyers();
-    setIsModalOpen(false);
   };
 
   const columns = [
@@ -100,23 +94,19 @@ const Buyers = () => {
   ];
 
   const enquiryColumns = [
-    { header: 'Property', accessor: 'title', className: 'font-semibold' },
+    { header: 'ID', accessor: 'formatted_id', className: 'font-semibold' },
     { header: 'Type', accessor: e => e.property_type.toUpperCase() },
     { header: 'Amount', accessor: e => `₹${Number(e.amount || 0).toLocaleString()}` },
-    { header: 'Status', accessor: 'enquiry_status' }
+    { header: 'Date', accessor: e => e.enquiry_date?.split('T')[0] }
   ];
 
   return (
     <div className="space-y-6">
-
-      <div className="flex justify-between">
-        <h2 className="text-2xl font-bold">Buyers</h2>
-        <button
-          onClick={openAdd}
-          className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase"
-        >
-          Add Buyer
-        </button>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Sale Buyers</h2>
+        <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">
+          Lead Management
+        </p>
       </div>
 
       {loading ? (
@@ -132,18 +122,16 @@ const Buyers = () => {
 
       {/* MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-xl">
-
-            <div className="px-8 py-6 border-b flex justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-xl overflow-hidden">
+            <div className="px-8 py-6 border-b flex justify-between items-center bg-slate-50">
               <h3 className="text-xl font-bold">
-                {mode === 'add' ? 'New Buyer' : mode === 'edit' ? 'Edit Buyer' : 'View Buyer'}
+                {mode === 'edit' ? 'Edit Buyer Details' : 'View Buyer Profile'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)}>✕</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-2xl text-slate-400 hover:text-black">✕</button>
             </div>
 
             <div className="p-8 space-y-8 max-h-[75vh] overflow-y-auto">
-
               <div className="grid grid-cols-2 gap-8">
                 {[
                   ['name', 'Full Name'],
@@ -151,64 +139,59 @@ const Buyers = () => {
                   ['email', 'Email']
                 ].map(([k, l]) => (
                   <div key={k} className="flex flex-col space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest">{l}</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{l}</label>
                     <input
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || k === 'phone_number'} // Phone usually remains unique/uneditable
                       value={form[k]}
                       onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
-                      className="px-4 py-2 rounded-xl border"
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none disabled:bg-slate-50 transition-all font-medium"
                     />
                   </div>
                 ))}
 
                 <div className="col-span-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest">Address</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Address</label>
                   <textarea
                     disabled={isReadOnly}
                     value={form.address}
                     onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
                     rows={3}
-                    className="w-full px-4 py-2 rounded-xl border"
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none disabled:bg-slate-50 transition-all font-medium"
                   />
                 </div>
               </div>
 
-              {(mode === 'edit' || mode === 'view') && (
-                <div className="pt-6 border-t space-y-4">
-                  <h4 className="text-sm font-bold uppercase tracking-widest">
-                    Enquired Properties
-                  </h4>
+              <div className="pt-6 border-t space-y-4">
+                <h4 className="text-sm font-bold uppercase tracking-widest text-slate-700">
+                  Sale Enquiries History
+                </h4>
 
-                  {enqLoading ? (
-                    <Loader text="Loading enquiries..." />
-                  ) : enquiries.length === 0 ? (
-                    <p className="text-gray-400 text-sm">No enquiries found</p>
-                  ) : (
-                    <DataTable
-                      columns={enquiryColumns}
-                      data={enquiries}
-                    />
-                  )}
-                </div>
-              )}
-
+                {enqLoading ? (
+                  <Loader text="Loading enquiries..." />
+                ) : enquiries.length === 0 ? (
+                  <p className="text-gray-400 text-sm italic">No sale enquiries found for this buyer.</p>
+                ) : (
+                  <DataTable
+                    columns={enquiryColumns}
+                    data={enquiries}
+                  />
+                )}
+              </div>
             </div>
 
-            <div className="px-8 py-6 border-t flex justify-end gap-4">
-              <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-xl border">
+            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-slate-50">
+              <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-xl border border-slate-200 font-bold text-xs uppercase hover:bg-white transition-all">
                 Close
               </button>
               {mode !== 'view' && (
-                <button onClick={handleSave} className="bg-blue-600 text-white px-8 py-2 rounded-xl">
-                  Save Buyer
+                <button onClick={handleSave} className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">
+                  Save Changes
                 </button>
               )}
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 };

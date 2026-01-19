@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import DataTable from '../components/DataTable';
 import Loader from '../components/Loader';
 import { useApp } from '../App';
+import { getPlotLayout } from '../api/plot.api';
+import { useNavigate } from 'react-router-dom';
 
 import {
   getPlotProjects,
@@ -10,6 +12,7 @@ import {
 
 const PlotProperties = () => {
   const { setActiveProject } = useApp();
+  const navigate = useNavigate();
 
   const [plots, setPlots] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +34,19 @@ const PlotProperties = () => {
     fetchPlots();
   }, []);
 
+  const handleOpenEditor = async (p) => {
+    try {
+      const layoutResponse = await getPlotLayout(p.property_id);
+      setActiveProject({
+        property_id: p.property_id,
+        layout: layoutResponse.data || []
+      });
+      // Navigate to the specific URL for this plot
+      navigate(`/plots/editor/${p.property_id}`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
   // -------------------------
   // Columns
   // -------------------------
@@ -93,18 +109,8 @@ const PlotProperties = () => {
           data={plots}
           actions={(p) => (
             <button
-              onClick={async () => {
-                try {
-                  const project = await openPlotProject(p.property_id);
-                  setActiveProject({
-                    property_id: p.property_id,
-                  });
-
-                  console.log('Opened plot project:', p.property_id);
-                } catch (e) {
-                  alert('Failed to open plot layout');
-                }
-              }}
+              // Inside PlotProperties.jsx -> onClick handler
+              onClick={() => handleOpenEditor(p)}
               className="px-3 py-1 bg-blue-50 text-blue-600
                 text-[10px] font-bold rounded-lg
                 border border-blue-100 hover:bg-blue-100

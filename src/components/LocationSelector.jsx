@@ -21,27 +21,30 @@ const LocationSelector = ({
   }, []);
 
   // Load taluks
-  useEffect(() => {
-    if (!district_id) {
-      setTaluks([]);
-      setVillages([]);
-      return;
-    }
-    api.get(`/locations/taluks/${district_id}`)
-      .then(res => setTaluks(res.data || []))
-      .catch(() => setTaluks([]));
-  }, [district_id]);
+  // Load taluks when district_id changes
+useEffect(() => {
+  if (!district_id) {
+    setTaluks([]);
+    setVillages([]);
+    return;
+  }
+  // This matches the backend route: /taluks/:district_id
+  api.get(`/locations/taluks/${district_id}`)
+    .then(res => setTaluks(res.data || []))
+    .catch(() => setTaluks([]));
+}, [district_id]);
 
-  // Load villages
-  useEffect(() => {
-    if (!taluk_id) {
-      setVillages([]);
-      return;
-    }
-    api.get(`/locations/villages/${taluk_id}`)
-      .then(res => setVillages(res.data || []))
-      .catch(() => setVillages([]));
-  }, [taluk_id]);
+// Load villages when taluk_id changes
+useEffect(() => {
+  if (!taluk_id) {
+    setVillages([]);
+    return;
+  }
+  // This matches the backend route: /villages/:taluk_id
+  api.get(`/locations/villages/${taluk_id}`)
+    .then(res => setVillages(res.data || []))
+    .catch(() => setVillages([]));
+}, [taluk_id]);
 
   const wrapperClass = vertical
     ? 'flex flex-col space-y-4'

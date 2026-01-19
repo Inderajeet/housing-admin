@@ -34,3 +34,4 @@ export const updateRentProperty = async (propertyId, payload) => {
 export const deleteRentProperty = async (propertyId) => {
   return api.delete(ENDPOINTS.RENT.DELETE(propertyId));
 };
+

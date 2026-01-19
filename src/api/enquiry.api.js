@@ -1,7 +1,10 @@
 import {api} from './api';
 
-export const getEnquiries = () =>
-  api.get('/enquiries').then(r => r.data);
+export const getEnquiries = async (type = null) => {
+  const url = type ? `/enquiries?type=${type}` : '/enquiries';
+  const response = await api.get(url);
+  return response.data;
+};
 
 export const createEnquiry = (data) =>
   api.post('/enquiries', data).then(r => r.data);
