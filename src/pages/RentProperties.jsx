@@ -7,12 +7,25 @@ import { PropertyStatus, RentStatus } from '../types';
 import { STATUS_COLORS } from '../constants';
 import { useLocations } from '../context/LocationContext';
 import { api } from '../api/api';
-
+import SortableItem from '../components/SortableItem';
 import {
   getRentProperties,
   createRentProperty,
   updateRentProperty,
 } from '../api/rent.api';
+import {
+  DndContext,
+  closestCenter
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import AssetActionBar from '../components/AssetActionBar';
+import PropertyAssetsTabs from '../components/PropertyAssetsTabs';
 
 const EMPTY_FORM = {
   seller_name: '',
@@ -21,24 +34,23 @@ const EMPTY_FORM = {
   address: '',
   latitude: '',
   longitude: '',
-  district_id: '',
-  taluk_id: '',
-  village_id: '',
-  area_id: '',
+  district_id: null,
+  taluk_id: null,
+  village_id: null,
+  area_id: null,
   status: PropertyStatus.ACTIVE,
-  bhk: '',
+  bhk: null,
   rent_amount: '',
   advance_amount: '',
   property_use: 'residential',
-  rent_status: RentStatus.ACTIVE,
+  rent_status: '',
   landmark: '',
   street_name: '',
 };
 
-// Fixed normalization to ensure data is preserved in all modes
 const normalizeForm = (data = {}) => {
   const base = { ...EMPTY_FORM };
-  
+
   // First, copy all direct properties
   Object.keys(EMPTY_FORM).forEach(key => {
     // Check both direct property and nested seller object
@@ -46,7 +58,7 @@ const normalizeForm = (data = {}) => {
       base[key] = data[key];
     }
   });
-  
+
   // Get seller name from various possible sources
   // Priority: data.seller_name > data.seller?.name > data.seller_name in nested
   if (data.seller_name) {
@@ -56,14 +68,14 @@ const normalizeForm = (data = {}) => {
   } else if (data.seller_name_from_api) { // If API returns it differently
     base.seller_name = data.seller_name_from_api;
   }
-  
+
   // Get contact phone from various possible sources
   if (data.contact_phone) {
     base.contact_phone = data.contact_phone;
   } else if (data.seller?.contact_phone) {
     base.contact_phone = data.seller.contact_phone;
   }
-  
+
   return base;
 };
 
@@ -77,13 +89,17 @@ const RentProperties = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  
-  const [sellerStatus, setSellerStatus] = useState(null); 
+
+  const [sellerStatus, setSellerStatus] = useState(null);
   const [checkingSeller, setCheckingSeller] = useState(false);
   const [phoneError, setPhoneError] = useState('');
 
   const [mode, setMode] = useState('add');
   const isReadOnly = mode === 'view';
+
+  const [activeTab, setActiveTab] = useState('details');
+  const [assets, setAssets] = useState([]);
+  const [assetLoading, setAssetLoading] = useState(false);
 
   const [filters, setFilters] = useState({
     dateRange: 'all',
@@ -96,6 +112,12 @@ const RentProperties = () => {
   });
   const [filterTaluks, setFilterTaluks] = useState([]);
   const [filterVillages, setFilterVillages] = useState([]);
+
+  const [selectedAssets, setSelectedAssets] = useState([]);
+  const [downloadMode, setDownloadMode] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+
+
 
   // Track if we should check phone (only in add mode or when phone changes in edit mode)
   const shouldCheckPhoneRef = useRef(false);
@@ -119,16 +141,16 @@ const RentProperties = () => {
       if (!shouldCheckPhoneRef.current || mode === 'view') {
         return;
       }
-      
+
       const phone = form.contact_phone;
-      
+
       // Validation for phone length
       if (phone.length > 0 && phone.length < 10) {
         setPhoneError('Please enter 10 digits');
         setSellerStatus(null);
         return;
       }
-      
+
       // Perform API check only for valid 10-digit numbers
       if (phone.length === 10) {
         setPhoneError('');
@@ -141,21 +163,21 @@ const RentProperties = () => {
               setForm(prev => ({ ...prev, seller_name: res.data.name }));
             }
             setSellerStatus('exists');
-          } else { 
-            setSellerStatus('new'); 
+          } else {
+            setSellerStatus('new');
           }
-        } catch (e) { 
-          setSellerStatus('new'); 
+        } catch (e) {
+          setSellerStatus('new');
         }
-        finally { 
-          setCheckingSeller(false); 
+        finally {
+          setCheckingSeller(false);
         }
       } else {
         setPhoneError('');
         setSellerStatus(null);
       }
     };
-    
+
     const timer = setTimeout(checkPhone, 500);
     return () => clearTimeout(timer);
   }, [form.contact_phone, mode, form.seller_name]);
@@ -166,6 +188,18 @@ const RentProperties = () => {
       shouldCheckPhoneRef.current = false;
     }
   }, [isModalOpen]);
+
+  useEffect(() => {
+    if (isModalOpen && selected?.property_id) {
+      setAssetLoading(true);
+      api.get(`/property-assets/${selected.property_id}`)
+        .then(res => setAssets(res.data || []))
+        .finally(() => setAssetLoading(false));
+    } else {
+      setAssets([]);
+      setActiveTab('details');
+    }
+  }, [isModalOpen, selected]);
 
   useEffect(() => {
     if (!filters.district_id) { setFilterTaluks([]); setFilterVillages([]); return; }
@@ -195,20 +229,20 @@ const RentProperties = () => {
         if (filters.dateRange === 'week') {
           const weekAgo = new Date();
           weekAgo.setDate(now.getDate() - 7);
-          weekAgo.setHours(0,0,0,0);
+          weekAgo.setHours(0, 0, 0, 0);
           return pDate >= weekAgo && pDate <= todayEnd;
         }
         if (filters.dateRange === 'month') {
           const monthAgo = new Date();
           monthAgo.setMonth(now.getMonth() - 1);
-          monthAgo.setHours(0,0,0,0);
+          monthAgo.setHours(0, 0, 0, 0);
           return pDate >= monthAgo && pDate <= todayEnd;
         }
         if (filters.dateRange === 'custom' && filters.startDate && filters.endDate) {
           const start = new Date(filters.startDate);
-          start.setHours(0,0,0,0);
+          start.setHours(0, 0, 0, 0);
           const end = new Date(filters.endDate);
-          end.setHours(23,59,59,999);
+          end.setHours(23, 59, 59, 999);
           return pDate >= start && pDate <= end;
         }
         return true;
@@ -223,7 +257,7 @@ const RentProperties = () => {
       const normalizedForm = normalizeForm(property);
       setSelected(property);
       setForm(normalizedForm);
-      
+
       // For edit mode, allow phone check only if phone is changed
       // For view mode, never check phone
       if (modalMode === 'edit') {
@@ -237,9 +271,9 @@ const RentProperties = () => {
       // In add mode, always allow phone check
       shouldCheckPhoneRef.current = true;
     }
-    
+
     setMode(modalMode);
-    
+
     // Reset seller status for view mode
     if (modalMode === 'view') {
       setSellerStatus(null);
@@ -250,21 +284,21 @@ const RentProperties = () => {
       setSellerStatus(null);
       setCheckingSeller(false);
       setPhoneError('');
-      
+
       // If we have a valid phone in edit mode, we might want to show status
       if (modalMode === 'edit' && property?.contact_phone?.length === 10) {
         // We could optionally pre-check here if needed
       }
     }
-    
+
     setIsModalOpen(true);
   };
 
   // Handle phone input change - enable phone check in edit mode when phone changes
   const handlePhoneChange = (e) => {
     const newPhone = e.target.value.replace(/\D/g, '').slice(0, 10);
-    setForm({...form, contact_phone: newPhone});
-    
+    setForm({ ...form, contact_phone: newPhone });
+
     // Enable phone check in edit mode when phone changes
     if (mode === 'edit') {
       shouldCheckPhoneRef.current = true;
@@ -298,16 +332,39 @@ const RentProperties = () => {
 
   const handleSave = async () => {
     if (mode === 'view') return;
-    if (!form.contact_phone || form.contact_phone.length < 10) return alert('Enter a valid 10-digit phone number');
+    if (!form.contact_phone || form.contact_phone.length < 10)
+      return alert('Enter a valid 10-digit phone number');
+
     setSubmitting(true);
+
     try {
-      if (selected?.property_id) await updateRentProperty(selected.property_id, form);
-      else await createRentProperty(form);
+      if (selected?.property_id) {
+        await updateRentProperty(selected.property_id, form);
+      } else {
+        await createRentProperty(form);
+      }
+
       await fetchRent();
-      setIsModalOpen(false);
+
       shouldCheckPhoneRef.current = false; // Reset phone check flag
-    } catch (err) { alert("Failed: " + err.message); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      alert("Failed: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+
+  const toggleSelect = (id) => {
+    setSelectedAssets(p =>
+      p.includes(id) ? p.filter(i => i !== id) : [...p, id]
+    );
+  };
+
+  const exitActionMode = () => {
+    setSelectedAssets([]);
+    setDownloadMode(false);
+    setDeleteMode(false);
   };
 
   const dropdownClass = "px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all";
@@ -357,136 +414,174 @@ const RentProperties = () => {
             { header: 'Rent', accessor: p => `₹${Number(p.rent_amount || 0).toLocaleString()}` },
             { header: 'Status', accessor: p => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_COLORS[p.rent_status] || 'bg-gray-200'}`}>{p.rent_status}</span> }
           ]}
-          data={filteredProperties} 
-          onEdit={(p) => openModal(p, 'edit')} 
+          data={filteredProperties}
+          onEdit={(p) => openModal(p, 'edit')}
           onView={(p) => openModal(p, 'view')}
         />
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden">
-            <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">
-                {mode === 'add' ? 'Add' : mode === 'edit' ? 'Edit' : 'View'} Rental Property
-              </h3>
-              <button className="text-2xl text-gray-400 hover:text-gray-600" onClick={() => setIsModalOpen(false)}>✕</button>
-            </div>
+        <>
+          <div className="!m-0 fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-10">
+            {/* 1. Added h-full and max-h-full to the container to prevent overflow */}
+            <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-full">
 
-            <div className="p-8 space-y-8 max-h-[75vh] overflow-y-auto">
-              <div className="grid grid-cols-2 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Phone</label>
-                    {mode !== 'view' && checkingSeller && <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
-                    {mode !== 'view' && sellerStatus === 'exists' && <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">EXISTING SELLER</span>}
+              {/* HEADER: Fixed height */}
+              <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
+                <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">
+                  {mode === 'add' ? 'Add' : mode === 'edit' ? 'Edit' : 'View'} Rental Property
+                </h3>
+                <button className="text-2xl text-gray-400 hover:text-gray-600" onClick={() => setIsModalOpen(false)}>✕</button>
+              </div>
+
+              {/* TABS: Fixed height */}
+              <div className="flex gap-6 px-8 border-b bg-white shrink-0">
+                {['details', 'assets'].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
+              ${activeTab === tab
+                        ? 'border-b-2 border-blue-600 text-blue-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
+                {activeTab === 'details' && (
+                  <div className="space-y-8">
+                    {/* 🔽 EVERYTHING THAT WAS INSIDE STAYS EXACTLY SAME */}
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Phone</label>
+                          {mode !== 'view' && checkingSeller && <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
+                          {mode !== 'view' && sellerStatus === 'exists' && <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">EXISTING SELLER</span>}
+                        </div>
+                        <input
+                          disabled={isReadOnly}
+                          value={form.contact_phone}
+                          onChange={handlePhoneChange}
+                          placeholder="10-digit number"
+                          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                        />
+                        {phoneError && <p className="text-[9px] text-red-500 font-bold">{phoneError}</p>}
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Name</label>
+                        <input
+                          disabled={isReadOnly}
+                          value={form.seller_name}
+                          onChange={e => setForm({ ...form, seller_name: e.target.value })}
+                          placeholder="Enter name"
+                          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property ID / Title</label>
+                        <input disabled={true} value={selected?.formatted_id || 'NEW LISTING'} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 font-bold text-blue-600" />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Status</label>
+                        <select disabled={isReadOnly} value={form.rent_status} onChange={e => setForm({ ...form, rent_status: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
+                          {Object.values(RentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Amount</label>
+                        <input disabled={isReadOnly} value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Advance Amount</label>
+                        <input disabled={isReadOnly} value={form.advance_amount} onChange={e => setForm({ ...form, advance_amount: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">BHK</label>
+                        <input disabled={isReadOnly} value={form.bhk} onChange={e => setForm({ ...form, bhk: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Use</label>
+                        <select disabled={isReadOnly} value={form.property_use} onChange={e => setForm({ ...form, property_use: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
+                          <option value="residential">Residential</option>
+                          <option value="commercial">Commercial</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Area ID</label>
+                        <input disabled={isReadOnly} value={form.area_id} onChange={e => setForm({ ...form, area_id: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Street Name</label>
+                        <input disabled={isReadOnly} value={form.street_name} onChange={e => setForm({ ...form, street_name: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Landmark</label>
+                        <input disabled={isReadOnly} value={form.landmark} onChange={e => setForm({ ...form, landmark: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
+                      <textarea disabled={isReadOnly} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Latitude</label>
+                        <input disabled={isReadOnly} value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Longitude</label>
+                        <input disabled={isReadOnly} value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Location</label>
+                      <LocationSelector district_id={form.district_id} taluk_id={form.taluk_id} village_id={form.village_id} disabled={isReadOnly} onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))} />
+                    </div>
                   </div>
-                  <input 
-                    disabled={isReadOnly} 
-                    value={form.contact_phone} 
-                    onChange={handlePhoneChange} 
-                    placeholder="10-digit number" 
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" 
+                )}
+
+                {activeTab === 'assets' && (
+                  <PropertyAssetsTabs
+                    propertyId={selected.property_id}
+                    assets={assets}
+                    setAssets={setAssets}
+                    isReadOnly={isReadOnly}
                   />
-                  {phoneError && <p className="text-[9px] text-red-500 font-bold">{phoneError}</p>}
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Name</label>
-                  <input 
-                    disabled={isReadOnly} 
-                    value={form.seller_name} 
-                    onChange={e => setForm({...form, seller_name: e.target.value})} 
-                    placeholder="Enter name" 
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" 
-                  />
-                </div>
-              </div>
+                )}
 
-              <div className="grid grid-cols-2 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property ID / Title</label>
-                  <input disabled={true} value={selected?.formatted_id || 'NEW LISTING'} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 font-bold text-blue-600" />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Status</label>
-                  <select disabled={isReadOnly} value={form.rent_status} onChange={e => setForm({...form, rent_status: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
-                    {Object.values(RentStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Amount</label>
-                  <input disabled={isReadOnly} value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Advance Amount</label>
-                  <input disabled={isReadOnly} value={form.advance_amount} onChange={e => setForm({...form, advance_amount: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">BHK</label>
-                  <input disabled={isReadOnly} value={form.bhk} onChange={e => setForm({...form, bhk: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Use</label>
-                  <select disabled={isReadOnly} value={form.property_use} onChange={e => setForm({...form, property_use: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
-                    <option value="residential">Residential</option>
-                    <option value="commercial">Commercial</option>
-                  </select>
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Area ID</label>
-                  <input disabled={isReadOnly} value={form.area_id} onChange={e => setForm({...form, area_id: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Street Name</label>
-                  <input disabled={isReadOnly} value={form.street_name} onChange={e => setForm({...form, street_name: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Landmark</label>
-                  <input disabled={isReadOnly} value={form.landmark} onChange={e => setForm({...form, landmark: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-              </div>
-
-              <div className="flex flex-col space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
-                <textarea disabled={isReadOnly} value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-8">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Latitude</label>
-                  <input disabled={isReadOnly} value={form.latitude} onChange={e => setForm({...form, latitude: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Longitude</label>
-                  <input disabled={isReadOnly} value={form.longitude} onChange={e => setForm({...form, longitude: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                </div>
-              </div>
-
-              <div className="flex flex-col space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Location</label>
-                <LocationSelector district_id={form.district_id} taluk_id={form.taluk_id} village_id={form.village_id} disabled={isReadOnly} onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))} />
-              </div>
-            </div>
-
-            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50">
-              <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600">Close</button>
-              {!isReadOnly && (
-                <button onClick={handleSave} disabled={submitting} className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase shadow-lg">
-                  {submitting ? 'Saving...' : mode === 'add' ? 'Create Rental Listing' : 'Update Rental Listing'}
+              <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50 shrink-0">
+                <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600">
+                  Close
                 </button>
-              )}
+                {!isReadOnly && (
+                  <button onClick={handleSave} disabled={submitting} className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase shadow-lg">
+                    {submitting ? 'Saving...' : mode === 'add' ? 'Create' : 'Update'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
