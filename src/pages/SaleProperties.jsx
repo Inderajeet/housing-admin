@@ -35,7 +35,7 @@ const EMPTY_FORM = {
   boundary_south: '',
   boundary_east: '',
   boundary_west: '',
-  sale_status: SaleStatus.AVAILABLE,
+  sale_status: 'Nil Booking',
   total_units_count: '',
   booked_units: '',
   open_units: '',
@@ -46,70 +46,27 @@ const EMPTY_FORM = {
 const normalizeForm = (data = {}) => {
   const base = { ...EMPTY_FORM };
 
-  // Copy all direct properties
+  // First, copy all direct properties
   Object.keys(EMPTY_FORM).forEach(key => {
     if (data[key] !== undefined && data[key] !== null) {
       base[key] = data[key];
     }
   });
 
-  // Handle seller name from various sources
+  // Get seller name from various possible sources
   if (data.seller_name) {
     base.seller_name = data.seller_name;
   } else if (data.seller?.name) {
     base.seller_name = data.seller.name;
+  } else if (data.seller_name_from_api) {
+    base.seller_name = data.seller_name_from_api;
   }
 
-  // Handle contact phone from various sources
+  // Get contact phone from various possible sources
   if (data.contact_phone) {
     base.contact_phone = data.contact_phone;
   } else if (data.seller?.contact_phone) {
     base.contact_phone = data.seller.contact_phone;
-  }
-
-  // Auto-calculate open units if needed
-  if (base.sale_type?.toUpperCase() === 'PLOT' || base.sale_type?.toUpperCase() === 'FLAT') {
-    const getBookedSet = (input) => {
-      const bookedSet = new Set();
-      if (!input) return bookedSet;
-      const parts = input.toString().split(',').map(p => p.trim());
-      parts.forEach(part => {
-        if (part.includes('-')) {
-          const [start, end] = part.split('-').map(Number);
-          if (!isNaN(start) && !isNaN(end)) {
-            for (let i = Math.min(start, end); i <= Math.max(start, end); i++) bookedSet.add(i);
-          }
-        } else {
-          const num = Number(part);
-          if (!isNaN(num)) bookedSet.add(num);
-        }
-      });
-      return bookedSet;
-    };
-
-    const getRangeString = (numbers) => {
-      if (numbers.length === 0) return "None";
-      numbers.sort((a, b) => a - b);
-      const ranges = [];
-      let start = numbers[0];
-      let end = numbers[0];
-      for (let i = 1; i <= numbers.length; i++) {
-        if (numbers[i] === end + 1) { end = numbers[i]; }
-        else {
-          ranges.push(start === end ? `${start}` : `${start}-${end}`);
-          start = numbers[i]; end = numbers[i];
-        }
-      }
-      return ranges.join(', ');
-    };
-
-    const total = parseInt(base.total_units_count) || 0;
-    const bookedSet = getBookedSet(base.booked_units);
-    const openNumbers = [];
-    for (let i = 1; i <= total; i++) {
-      if (!bookedSet.has(i)) openNumbers.push(i);
-    }
-    base.open_units = getRangeString(openNumbers);
   }
 
   return base;
@@ -151,7 +108,74 @@ const SaleProperties = () => {
 
   const shouldCheckPhoneRef = useRef(false);
 
+  // Add validation errors state
+  const [validationErrors, setValidationErrors] = useState({});
+
   const showExtraFields = form.sale_type?.toUpperCase() === 'PLOT' || form.sale_type?.toUpperCase() === 'FLAT';
+
+  // Define required fields for approved status
+  const REQUIRED_FIELDS = {
+    'approved': [
+      'contact_phone',
+      'sale_type',
+      'price',
+      'area_size',
+      'survey_number',
+      'latitude',
+      'longitude',
+      'district_id',
+      'taluk_id',
+      'village_id'
+    ]
+  };
+
+  // Helper function for validation styling
+  const getValidationStyle = (fieldName) => {
+    return validationErrors[fieldName] ? 'border-red-500 bg-red-50' : 'border-gray-300';
+  };
+
+  // Validation function
+  const validateForm = () => {
+    const errors = {};
+    
+    // Only validate if status is 'approved'
+    if (form.status === 'approved') {
+      REQUIRED_FIELDS.approved.forEach(field => {
+        const value = form[field];
+        
+        if (field === 'contact_phone') {
+          if (!value || value.length !== 10) {
+            errors[field] = 'Valid 10-digit phone number is required';
+          }
+        } else if (field === 'price') {
+          if (!value || isNaN(value) || Number(value) <= 0) {
+            errors[field] = 'Valid price is required';
+          }
+        } else if (field === 'area_size') {
+          if (!value  || Number(value) <= 0) {
+            errors[field] = 'Valid area size is required';
+          }
+        } else if (field === 'survey_number') {
+          if (!value || value.trim() === '') {
+            errors[field] = 'Survey number is required';
+          }
+        } else if (field === 'latitude' || field === 'longitude') {
+          if (!value || isNaN(value)) {
+            errors[field] = 'Valid coordinate is required';
+          }
+        } else if (field === 'district_id' || field === 'taluk_id' || field === 'village_id') {
+          if (!value) {
+            errors[field] = 'This location field is required';
+          }
+        } else if (!value) {
+          errors[field] = 'This field is required';
+        }
+      });
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const fetchSale = async () => {
     setLoading(true);
@@ -165,27 +189,31 @@ const SaleProperties = () => {
 
   useEffect(() => { fetchSale(); }, []);
 
-  // Phone check logic
+  // Phone check logic - only run when shouldCheckPhoneRef.current is true
   useEffect(() => {
     const checkPhone = async () => {
+      // Only check if we're allowed to
       if (!shouldCheckPhoneRef.current || mode === 'view') {
         return;
       }
 
       const phone = form.contact_phone;
 
+      // Validation for phone length
       if (phone.length > 0 && phone.length < 10) {
         setPhoneError('Please enter 10 digits');
         setSellerStatus(null);
         return;
       }
 
+      // Perform API check only for valid 10-digit numbers
       if (phone.length === 10) {
         setPhoneError('');
         setCheckingSeller(true);
         try {
           const res = await api.get(`/sale/check/${phone}`);
           if (res.data && res.data.seller_id) {
+            // Auto-populate seller name only in add mode or when editing and seller name is empty
             if (mode === 'add' || form.seller_name === '' || form.seller_name === EMPTY_FORM.seller_name) {
               setForm(prev => ({ ...prev, seller_name: res.data.name }));
             }
@@ -209,12 +237,14 @@ const SaleProperties = () => {
     return () => clearTimeout(timer);
   }, [form.contact_phone, mode, form.seller_name]);
 
+  // Reset shouldCheckPhone when mode changes or modal closes
   useEffect(() => {
     if (!isModalOpen) {
       shouldCheckPhoneRef.current = false;
     }
   }, [isModalOpen]);
 
+  // Load assets when property is selected and modal is open
   useEffect(() => {
     if (isModalOpen && selected?.property_id) {
       setAssetLoading(true);
@@ -226,6 +256,13 @@ const SaleProperties = () => {
       setActiveTab('details');
     }
   }, [isModalOpen, selected]);
+
+  // Clear errors when status changes away from approved
+  useEffect(() => {
+    if (form.status !== 'approved') {
+      setValidationErrors({});
+    }
+  }, [form.status]);
 
   useEffect(() => {
     if (!filters.district_id) { setFilterTaluks([]); setFilterVillages([]); return; }
@@ -239,11 +276,11 @@ const SaleProperties = () => {
 
   useEffect(() => {
     let result = [...allProperties];
-    
+
     if (filters.sale_type !== 'all') {
       result = result.filter(p => p.sale_type === filters.sale_type);
     }
-    
+
     if (filters.district_id) {
       result = result.filter(p => Number(p.district_id) === Number(filters.district_id));
     }
@@ -287,30 +324,37 @@ const SaleProperties = () => {
     setFilteredProperties(result);
   }, [filters, allProperties]);
 
+  // Handle opening modal for different modes
   const openModal = (property = null, modalMode = 'add') => {
     if (property) {
       const normalizedForm = normalizeForm(property);
       setSelected(property);
       setForm(normalizedForm);
 
+      // For edit mode, allow phone check only if phone is changed
+      // For view mode, never check phone
       if (modalMode === 'edit') {
-        shouldCheckPhoneRef.current = false;
+        shouldCheckPhoneRef.current = false; // Start with no check
       } else if (modalMode === 'view') {
-        shouldCheckPhoneRef.current = false;
+        shouldCheckPhoneRef.current = false; // Never check in view mode
       }
     } else {
       setSelected(null);
       setForm(EMPTY_FORM);
+      // In add mode, always allow phone check
       shouldCheckPhoneRef.current = true;
     }
 
     setMode(modalMode);
 
+    // Reset seller status and validation errors
+    setValidationErrors({});
     if (modalMode === 'view') {
       setSellerStatus(null);
       setCheckingSeller(false);
       setPhoneError('');
     } else {
+      // For add/edit, start with no status unless phone is valid
       setSellerStatus(null);
       setCheckingSeller(false);
       setPhoneError('');
@@ -319,12 +363,25 @@ const SaleProperties = () => {
     setIsModalOpen(true);
   };
 
+  // Handle phone input change - enable phone check in edit mode when phone changes
   const handlePhoneChange = (e) => {
     const newPhone = e.target.value.replace(/\D/g, '').slice(0, 10);
     setForm({ ...form, contact_phone: newPhone });
 
+    // Enable phone check in edit mode when phone changes
     if (mode === 'edit') {
       shouldCheckPhoneRef.current = true;
+    }
+  };
+
+  // Handle status change
+  const handleStatusChange = (e) => {
+    const newStatus = e.target.value;
+    setForm({ ...form, status: newStatus });
+    
+    // Clear validation errors when changing away from approved
+    if (newStatus !== 'approved') {
+      setValidationErrors({});
     }
   };
 
@@ -334,7 +391,7 @@ const SaleProperties = () => {
 
       if (showExtraFields && (key === 'total_units_count' || key === 'booked_units')) {
         const total = parseInt(key === 'total_units_count' ? value : prev.total_units_count) || 0;
-        
+
         const getBookedSet = (input) => {
           const bookedSet = new Set();
           if (!input) return bookedSet;
@@ -404,23 +461,62 @@ const SaleProperties = () => {
 
   const handleSave = async () => {
     if (mode === 'view') return;
-    if (!form.contact_phone || form.contact_phone.length < 10)
-      return alert('Enter a valid 10-digit phone number');
-    if (!form.seller_name.trim())
-      return alert('Please enter seller name');
+    
+    // Clear previous errors
+    setValidationErrors({});
+    
+    // Validate form
+    if (!validateForm()) {
+      // Find the first error field and scroll to it
+      const firstErrorField = Object.keys(validationErrors)[0];
+      if (firstErrorField) {
+        const element = document.querySelector(`[data-field="${firstErrorField}"]`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.focus();
+        }
+      }
+      return; // Don't proceed with save
+    }
+    
+    // Original phone validation (keep as backup)
+    if (!form.contact_phone || form.contact_phone.length < 10) {
+      setValidationErrors({ contact_phone: 'Valid 10-digit phone number is required' });
+      const phoneField = document.querySelector('[data-field="contact_phone"]');
+      if (phoneField) {
+        phoneField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        phoneField.focus();
+      }
+      return;
+    }
 
     setSubmitting(true);
 
     try {
+      let updatedProperty;
+
       if (selected?.property_id) {
         await updateSaleProperty(selected.property_id, form);
+        updatedProperty = { ...selected, ...form };
       } else {
-        await createSaleProperty(form);
+        // CREATE and get created record
+        const res = await createSaleProperty(form);
+        // Handle API response - adjust based on your actual API structure
+        if (res.data) {
+          updatedProperty = res.data;
+        } else if (res.property) {
+          updatedProperty = res.property;
+        } else {
+          updatedProperty = res; // Fallback
+        }
       }
-
+      
       await fetchSale();
+      setSelected(updatedProperty);
+      setMode('edit');           // now it becomes editable
+      setActiveTab('assets');    // go to assets immediately
+
       shouldCheckPhoneRef.current = false;
-      setIsModalOpen(false);
     } catch (err) {
       alert("Failed: " + err.message);
     } finally {
@@ -454,7 +550,7 @@ const SaleProperties = () => {
               <option value="custom">Custom Range</option>
             </select>
           </div>
-          
+
           <div className="flex flex-col space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Sale Type</label>
             <select value={filters.sale_type} onChange={e => setFilters({ ...filters, sale_type: e.target.value })} className={dropdownClass}>
@@ -462,7 +558,7 @@ const SaleProperties = () => {
               {Object.values(SaleType).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          
+
           <div className="flex flex-col space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">District</label>
             <select value={filters.district_id} onChange={e => setFilters({ ...filters, district_id: e.target.value, taluk_id: '', village_id: '' })} className={dropdownClass}>
@@ -470,7 +566,7 @@ const SaleProperties = () => {
               {districts?.map(d => <option key={d.district_id} value={d.district_id}>{d.district_name}</option>)}
             </select>
           </div>
-          
+
           {filters.district_id && (
             <div className="flex flex-col space-y-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Taluk</label>
@@ -480,7 +576,7 @@ const SaleProperties = () => {
               </select>
             </div>
           )}
-          
+
           {filters.taluk_id && (
             <div className="flex flex-col space-y-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Village</label>
@@ -490,10 +586,10 @@ const SaleProperties = () => {
               </select>
             </div>
           )}
-          
+
           <button onClick={() => setFilters({ dateRange: 'all', sale_type: 'all', district_id: '', taluk_id: '', village_id: '', startDate: '', endDate: '' })} className="text-[10px] font-bold text-red-500 uppercase pb-3 hover:underline">Reset</button>
         </div>
-        
+
         {filters.dateRange === 'custom' && (
           <div className="flex gap-4 pt-2 border-t border-gray-50">
             <div className="flex flex-col space-y-1">
@@ -509,19 +605,40 @@ const SaleProperties = () => {
       </div>
 
       {loading ? <Loader /> : (
-        <DataTable
-          columns={[
-            { header: 'ID', accessor: 'formatted_id' },
-            { header: 'Contact', accessor: 'contact_phone', className: 'font-bold text-emerald-600' },
-            { header: 'Registered', accessor: p => new Date(p.created_at).toLocaleDateString() },
-            { header: 'Type', accessor: 'sale_type' },
-            { header: 'Price', accessor: p => `₹${Number(p.price || 0).toLocaleString()}` },
-            { header: 'Status', accessor: p => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_COLORS[p.sale_status] || 'bg-gray-200'}`}>{p.sale_status}</span> }
-          ]}
-          data={filteredProperties}
-          onEdit={(p) => openModal(p, 'edit')}
-          onView={(p) => openModal(p, 'view')}
-        />
+        <div className="overflow-x-auto">
+          <DataTable
+            columns={[
+              { header: 'ID', accessor: 'formatted_id' },
+              { header: 'Contact', accessor: 'contact_phone', className: 'font-bold text-emerald-600' },
+              { header: 'Registered', accessor: p => new Date(p.created_at).toLocaleDateString(), sortable:true, sortBy: p => new Date(p.created_at).getTime() },
+              { header: 'Type', accessor: 'sale_type', sortable: false },
+              { 
+                header: 'Approval', 
+                accessor: p => {
+                  const status = p.status || 'pending';
+                  const statusColors = {
+                    'approved': 'bg-green-100 text-green-800 border-green-200',
+                    'pending': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                    'rejected': 'bg-red-100 text-red-800 border-red-200'
+                  };
+                  const colorClass = statusColors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+                  
+                  return (
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${colorClass}`}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </span>
+                  );
+                },
+                sortable:true
+              },
+              { header: 'Status', accessor: p => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_COLORS[p.sale_status] || 'bg-gray-200'}`}>{p.sale_status}</span>, sortable:true },
+              { header: 'Price', accessor: p => `₹${Number(p.price || 0).toLocaleString()}` }
+            ]}
+            data={filteredProperties}
+            onEdit={(p) => openModal(p, 'edit')}
+            onView={(p) => openModal(p, 'view')}
+          />
+        </div>
       )}
 
       {isModalOpen && (
@@ -536,24 +653,50 @@ const SaleProperties = () => {
               </div>
 
               <div className="flex gap-6 px-8 border-b bg-white shrink-0">
-                {['details', 'assets'].map(tab => (
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
+                    ${activeTab === 'details' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  DETAILS
+                </button>
+
+                {/* ONLY show Assets if property exists */}
+                {selected?.property_id && (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => setActiveTab('assets')}
                     className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
-                      ${activeTab === tab
-                        ? 'border-b-2 border-emerald-600 text-emerald-600'
-                        : 'text-gray-400 hover:text-gray-600'
-                      }`}
+                      ${activeTab === 'assets' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    {tab}
+                    ASSETS
                   </button>
-                ))}
+                )}
               </div>
 
               <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
                 {activeTab === 'details' && (
                   <div className="space-y-8">
+                    <div className="flex flex-col space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                        Approval Status
+                      </label>
+
+                      <select
+                        disabled={isReadOnly}
+                        value={form.status}
+                        onChange={handleStatusChange}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      {form.status === 'approved' && Object.keys(validationErrors).length > 0 && (
+                        <p className="text-[9px] text-red-500 font-bold mt-1">
+                          All required fields must be filled for approved status
+                        </p>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
                         <div className="flex justify-between items-center">
@@ -562,13 +705,17 @@ const SaleProperties = () => {
                           {mode !== 'view' && sellerStatus === 'exists' && <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">EXISTING SELLER</span>}
                         </div>
                         <input
+                          data-field="contact_phone"
                           disabled={isReadOnly}
                           value={form.contact_phone}
                           onChange={handlePhoneChange}
                           placeholder="10-digit number"
-                          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('contact_phone')} font-semibold`}
                         />
                         {phoneError && <p className="text-[9px] text-red-500 font-bold">{phoneError}</p>}
+                        {validationErrors.contact_phone && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.contact_phone}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Name</label>
@@ -598,13 +745,31 @@ const SaleProperties = () => {
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Sale Type</label>
-                        <select disabled={isReadOnly} value={form.sale_type} onChange={e => handleChange('sale_type', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
+                        <select 
+                          data-field="sale_type"
+                          disabled={isReadOnly} 
+                          value={form.sale_type} 
+                          onChange={e => handleChange('sale_type', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('sale_type')} font-semibold`}
+                        >
                           {Object.values(SaleType).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
+                        {validationErrors.sale_type && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.sale_type}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Price</label>
-                        <input disabled={isReadOnly} value={form.price} onChange={e => handleChange('price', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input 
+                          data-field="price"
+                          disabled={isReadOnly} 
+                          value={form.price} 
+                          onChange={e => handleChange('price', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('price')} font-semibold`}
+                        />
+                        {validationErrors.price && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.price}</p>
+                        )}
                       </div>
                     </div>
 
@@ -628,11 +793,29 @@ const SaleProperties = () => {
                     <div className="grid grid-cols-3 gap-8">
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Area Size</label>
-                        <input disabled={isReadOnly} value={form.area_size} onChange={e => handleChange('area_size', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input 
+                          data-field="area_size"
+                          disabled={isReadOnly} 
+                          value={form.area_size} 
+                          onChange={e => handleChange('area_size', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('area_size')} font-semibold`}
+                        />
+                        {validationErrors.area_size && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.area_size}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Survey Number</label>
-                        <input disabled={isReadOnly} value={form.survey_number} onChange={e => handleChange('survey_number', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input 
+                          data-field="survey_number"
+                          disabled={isReadOnly} 
+                          value={form.survey_number} 
+                          onChange={e => handleChange('survey_number', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('survey_number')} font-semibold`}
+                        />
+                        {validationErrors.survey_number && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.survey_number}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Street/Road Name</label>
@@ -670,24 +853,59 @@ const SaleProperties = () => {
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Latitude</label>
-                        <input disabled={isReadOnly} value={form.latitude} onChange={e => handleChange('latitude', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input 
+                          data-field="latitude"
+                          disabled={isReadOnly} 
+                          value={form.latitude} 
+                          onChange={e => handleChange('latitude', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('latitude')} font-semibold`}
+                        />
+                        {validationErrors.latitude && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.latitude}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Longitude</label>
-                        <input disabled={isReadOnly} value={form.longitude} onChange={e => handleChange('longitude', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input 
+                          data-field="longitude"
+                          disabled={isReadOnly} 
+                          value={form.longitude} 
+                          onChange={e => handleChange('longitude', e.target.value)} 
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('longitude')} font-semibold`}
+                        />
+                        {validationErrors.longitude && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.longitude}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-col space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Location</label>
-                      <LocationSelector district_id={form.district_id} taluk_id={form.taluk_id} village_id={form.village_id} disabled={isReadOnly} onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))} />
+                      <div className={`rounded-xl border ${validationErrors.district_id || validationErrors.taluk_id || validationErrors.village_id ? 'border-red-500 bg-red-50 p-1' : ''}`}>
+                        <LocationSelector 
+                          district_id={form.district_id} 
+                          taluk_id={form.taluk_id} 
+                          village_id={form.village_id} 
+                          disabled={isReadOnly} 
+                          onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))} 
+                        />
+                      </div>
+                      {validationErrors.district_id && (
+                        <p className="text-[9px] text-red-500 font-bold">District is required</p>
+                      )}
+                      {validationErrors.taluk_id && (
+                        <p className="text-[9px] text-red-500 font-bold">Taluk is required</p>
+                      )}
+                      {validationErrors.village_id && (
+                        <p className="text-[9px] text-red-500 font-bold">Village is required</p>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {activeTab === 'assets' && (
+                {activeTab === 'assets' && selected?.property_id && (
                   <PropertyAssetsTabs
-                    propertyId={selected?.property_id}
+                    propertyId={selected.property_id}
                     assets={assets}
                     setAssets={setAssets}
                     isReadOnly={isReadOnly}

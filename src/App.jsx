@@ -15,6 +15,7 @@ import Enquiries from './pages/Enquiries';
 import SaleProperties from './pages/SaleProperties';
 import Buyers from './pages/Buyers';
 import PremiumProperties from './components/PremiumProperties';
+import Bookings from './pages/Bookings';
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -42,8 +43,8 @@ const App = () => {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/rent/premium-properties" element={<PremiumProperties type='rent'/>} />
                     <Route path="/sale/premium-properties" element={<PremiumProperties type='sale'/>} />
-                    
-                    
+                    <Route path="/sale/bookings" element={<Bookings type='sale'/>} />
+                    <Route path="/rent/bookings" element={<Bookings type='rent'/>} />
                     <Route
                       path="/rent/owners"
                       element={<Sellers title="Rent Owners" typeFilter="rent" />}

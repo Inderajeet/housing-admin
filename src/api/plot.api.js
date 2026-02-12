@@ -34,7 +34,7 @@ export const getPlotUnits = async (id) => {
 export const getPlotLayout = (projectId) =>
   api.get(`/plot-units/${projectId}`);
 
-export const savePlotLayout = async (projectId, elements) => {
+export const savePlotLayout = async (projectId, elements) => {  
   const { data } = await api.post(
     `/plot-units/${projectId}`,
     { elements }

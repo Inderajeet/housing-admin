@@ -37,15 +37,16 @@ const EMPTY_FORM = {
   district_id: null,
   taluk_id: null,
   village_id: null,
-  area_id: null,
   status: PropertyStatus.ACTIVE,
   bhk: null,
   rent_amount: '',
   advance_amount: '',
   property_use: 'residential',
-  rent_status: '',
+  rent_status: 'Nil Booking',
   landmark: '',
   street_name: '',
+  extent_area: '',
+  extent_unit: '',
 };
 
 const normalizeForm = (data = {}) => {
@@ -55,7 +56,11 @@ const normalizeForm = (data = {}) => {
   Object.keys(EMPTY_FORM).forEach(key => {
     // Check both direct property and nested seller object
     if (data[key] !== undefined && data[key] !== null) {
-      base[key] = data[key];
+      if (key === 'property_use' && typeof data[key] === 'string') {
+        base[key] = data[key].toLowerCase();
+      } else {
+        base[key] = data[key];
+      }
     }
   });
 
@@ -117,10 +122,84 @@ const RentProperties = () => {
   const [downloadMode, setDownloadMode] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
 
-
+  // Add validation errors state
+  const [validationErrors, setValidationErrors] = useState({});
 
   // Track if we should check phone (only in add mode or when phone changes in edit mode)
   const shouldCheckPhoneRef = useRef(false);
+
+  // Define required fields for approved status
+  const REQUIRED_FIELDS = {
+    'approved': [
+      'contact_phone',
+      'rent_amount',
+      'advance_amount',
+      'property_use',
+      'latitude',
+      'longitude',
+      'district_id',
+      'taluk_id',
+      'village_id'
+    ]
+  };
+
+  // Helper function for validation styling
+  const getValidationStyle = (fieldName) => {
+    return validationErrors[fieldName] ? 'border-red-500 bg-red-50' : 'border-gray-300';
+  };
+
+  // Validation function
+  const validateForm = () => {
+    const errors = {};
+    const propertyUse = String(form.property_use || '').toLowerCase();
+
+    // Only validate if status is 'approved'
+    if (form.status === 'approved') {
+      // Base required fields
+      REQUIRED_FIELDS.approved.forEach(field => {
+        const value = form[field];
+
+        if (field === 'contact_phone') {
+          if (!value || value.length !== 10) {
+            errors[field] = 'Valid 10-digit phone number is required';
+          }
+        } else if (field === 'rent_amount' || field === 'advance_amount') {
+          if (!value || isNaN(value) || Number(value) <= 0) {
+            errors[field] = 'Valid amount is required';
+          }
+        } else if (field === 'latitude' || field === 'longitude') {
+          if (!value || isNaN(value)) {
+            errors[field] = 'Valid coordinate is required';
+          }
+        } else if (field === 'district_id' || field === 'taluk_id' || field === 'village_id') {
+          if (!value) {
+            errors[field] = 'This location field is required';
+          }
+        } else if (!value) {
+          errors[field] = 'This field is required';
+        }
+      });
+
+      // Conditional requirements based on property_use
+      if (propertyUse === 'residential') {
+        if (!form.bhk || isNaN(form.bhk) || Number(form.bhk) <= 0) {
+          errors.bhk = 'Valid BHK count is required';
+        }
+      }
+
+      if (propertyUse === 'commercial') {
+        if (!form.extent_area || isNaN(form.extent_area) || Number(form.extent_area) <= 0) {
+          errors.extent_area = 'Valid extent area is required';
+        }
+        if (!form.extent_unit) {
+          errors.extent_unit = 'Extent unit is required';
+        }
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const fetchRent = async () => {
     setLoading(true);
@@ -201,6 +280,13 @@ const RentProperties = () => {
     }
   }, [isModalOpen, selected]);
 
+  // Clear errors when status changes away from approved
+  useEffect(() => {
+    if (form.status !== 'approved') {
+      setValidationErrors({});
+    }
+  }, [form.status]);
+
   useEffect(() => {
     if (!filters.district_id) { setFilterTaluks([]); setFilterVillages([]); return; }
     api.get(`/locations/taluks/${filters.district_id}`).then(res => setFilterTaluks(res.data || []));
@@ -274,7 +360,8 @@ const RentProperties = () => {
 
     setMode(modalMode);
 
-    // Reset seller status for view mode
+    // Reset seller status and validation errors
+    setValidationErrors({});
     if (modalMode === 'view') {
       setSellerStatus(null);
       setCheckingSeller(false);
@@ -284,11 +371,6 @@ const RentProperties = () => {
       setSellerStatus(null);
       setCheckingSeller(false);
       setPhoneError('');
-
-      // If we have a valid phone in edit mode, we might want to show status
-      if (modalMode === 'edit' && property?.contact_phone?.length === 10) {
-        // We could optionally pre-check here if needed
-      }
     }
 
     setIsModalOpen(true);
@@ -305,6 +387,42 @@ const RentProperties = () => {
     }
   };
 
+  // Handle status change
+  const handleStatusChange = (e) => {
+    const newStatus = e.target.value;
+    setForm({ ...form, status: newStatus });
+
+    // Clear validation errors when changing away from approved
+    if (newStatus !== 'approved') {
+      setValidationErrors({});
+    }
+  };
+
+  // Handle property use change
+  const handlePropertyUseChange = (e) => {
+    const newUse = e.target.value;
+    setForm(prev => ({
+      ...prev,
+      property_use: newUse,
+      // Clear fields that don't apply
+      bhk: newUse === 'commercial' ? '' : prev.bhk,
+      extent_area: newUse === 'residential' ? '' : prev.extent_area,
+      extent_unit: newUse === 'residential' ? '' : prev.extent_unit
+    }));
+
+    // Clear related validation errors when switching
+    setValidationErrors(prev => {
+      const next = { ...prev };
+      if (newUse === 'commercial') {
+        delete next.bhk;
+      } else {
+        delete next.extent_area;
+        delete next.extent_unit;
+      }
+      return next;
+    });
+  };
+
   // --- UPDATED EXPORT LOGIC ---
   const handleExport = () => {
     const dataToExport = filteredProperties.map(p => ({
@@ -312,6 +430,8 @@ const RentProperties = () => {
       'Seller Name': p.seller?.name || p.seller_name,
       'Phone': p.contact_phone,
       'BHK': p.bhk,
+      'Extent Area': p.extent_area,
+      'Extent Unit': p.extent_unit,
       'Rent Amount': p.rent_amount,
       'Advance': p.advance_amount,
       'Status': p.rent_status,
@@ -319,7 +439,6 @@ const RentProperties = () => {
       'Street': p.street_name,
       'Landmark': p.landmark,
       'Address': p.address,
-      'Area ID': p.area_id,
       'Latitude': p.latitude,
       'Longitude': p.longitude,
       'Created At': new Date(p.created_at).toLocaleDateString()
@@ -332,21 +451,54 @@ const RentProperties = () => {
 
   const handleSave = async () => {
     if (mode === 'view') return;
-    if (!form.contact_phone || form.contact_phone.length < 10)
-      return alert('Enter a valid 10-digit phone number');
+
+    // Clear previous errors
+    setValidationErrors({});
+
+    // Validate form
+    if (!validateForm()) {
+      // Find the first error field and scroll to it
+      const firstErrorField = Object.keys(validationErrors)[0];
+      if (firstErrorField) {
+        const element = document.querySelector(`[data-field="${firstErrorField}"]`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.focus();
+        }
+      }
+      return; // Don't proceed with save
+    }
+
+    // Original phone validation
+    if (!form.contact_phone || form.contact_phone.length < 10) {
+      setValidationErrors({ contact_phone: 'Valid 10-digit phone number is required' });
+      const phoneField = document.querySelector('[data-field="contact_phone"]');
+      if (phoneField) {
+        phoneField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        phoneField.focus();
+      }
+      return;
+    }
 
     setSubmitting(true);
 
     try {
+      let updatedProperty;
+
       if (selected?.property_id) {
         await updateRentProperty(selected.property_id, form);
+        updatedProperty = { ...selected, ...form };
       } else {
-        await createRentProperty(form);
+        // CREATE and get created record
+        const res = await createRentProperty(form);
+        updatedProperty = res.data || res;  // depending on your API response
       }
-
       await fetchRent();
+      setSelected(updatedProperty);
+      setMode('edit');           // now it becomes editable
+      setActiveTab('assets');    // go to assets immediately
 
-      shouldCheckPhoneRef.current = false; // Reset phone check flag
+      shouldCheckPhoneRef.current = false;
     } catch (err) {
       alert("Failed: " + err.message);
     } finally {
@@ -385,6 +537,18 @@ const RentProperties = () => {
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
         <div className="flex flex-wrap gap-6 items-end">
           <div className="flex flex-col space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Property Type</label>
+            <select
+              value={filters.property_use}
+              onChange={e => setFilters({ ...filters, property_use: e.target.value })}
+              className={dropdownClass}
+            >
+              <option value="all">All</option>
+              <option value="commercial">Commercial</option>
+              <option value="residential">Residential</option>
+            </select>
+          </div>
+          <div className="flex flex-col space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Date Range</label>
             <select value={filters.dateRange} onChange={e => setFilters({ ...filters, dateRange: e.target.value })} className={dropdownClass}>
               <option value="all">All Time</option>
@@ -405,19 +569,39 @@ const RentProperties = () => {
       </div>
 
       {loading ? <Loader /> : (
-        <DataTable
-          columns={[
-            { header: 'ID', accessor: 'formatted_id' },
-            { header: 'Contact', accessor: 'contact_phone', className: 'font-bold text-blue-600' },
-            { header: 'Registered', accessor: p => new Date(p.created_at).toLocaleDateString() },
-            { header: 'BHK', accessor: p => `${p.bhk ?? '-'} BHK` },
-            { header: 'Rent', accessor: p => `₹${Number(p.rent_amount || 0).toLocaleString()}` },
-            { header: 'Status', accessor: p => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_COLORS[p.rent_status] || 'bg-gray-200'}`}>{p.rent_status}</span> }
-          ]}
-          data={filteredProperties}
-          onEdit={(p) => openModal(p, 'edit')}
-          onView={(p) => openModal(p, 'view')}
-        />
+        <div className="overflow-x-auto">
+          <DataTable
+            columns={[
+              { header: 'ID', accessor: 'formatted_id' },
+              { header: 'Contact', accessor: 'contact_phone', className: 'font-bold text-blue-600' },
+              { header: 'Registered', accessor: p => new Date(p.created_at).toLocaleDateString(), sortable: true, sortBy: p => new Date(p.created_at).getTime() },
+              {
+                header: 'Approval',
+                accessor: p => {
+                  const status = p.status || 'pending';
+                  const statusColors = {
+                    'approved': 'bg-green-100 text-green-800 border-green-200',
+                    'pending': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                    'rejected': 'bg-red-100 text-red-800 border-red-200'
+                  };
+                  const colorClass = statusColors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+
+                  return (
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${colorClass}`}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </span>
+                  );
+                },
+                sortable: true
+              },
+              { header: 'Status', accessor: p => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_COLORS[p.rent_status] || 'bg-gray-200'}`}>{p.rent_status}</span>, sortable: true },
+              { header: 'Rent', accessor: p => `₹${Number(p.rent_amount || 0).toLocaleString()}`, sortable: false }
+            ]}
+            data={filteredProperties}
+            onEdit={(p) => openModal(p, 'edit')}
+            onView={(p) => openModal(p, 'view')}
+          />
+        </div>
       )}
 
       {isModalOpen && (
@@ -436,94 +620,208 @@ const RentProperties = () => {
 
               {/* TABS: Fixed height */}
               <div className="flex gap-6 px-8 border-b bg-white shrink-0">
-                {['details', 'assets'].map(tab => (
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
+      ${activeTab === 'details' ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  DETAILS
+                </button>
+
+                {/* ONLY show Assets if property exists */}
+                {selected?.property_id && (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => setActiveTab('assets')}
                     className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
-              ${activeTab === tab
-                        ? 'border-b-2 border-blue-600 text-blue-600'
-                        : 'text-gray-400 hover:text-gray-600'
-                      }`}
+        ${activeTab === 'assets' ? 'border-b-2 border-blue-600 text-blue-600'
+                        : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    {tab}
+                    ASSETS
                   </button>
-                ))}
+                )}
               </div>
 
               <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
                 {activeTab === 'details' && (
                   <div className="space-y-8">
-                    {/* 🔽 EVERYTHING THAT WAS INSIDE STAYS EXACTLY SAME */}
-                    <div className="grid grid-cols-2 gap-8">
-                      <div className="flex flex-col space-y-2">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Phone</label>
-                          {mode !== 'view' && checkingSeller && <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
-                          {mode !== 'view' && sellerStatus === 'exists' && <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">EXISTING SELLER</span>}
-                        </div>
-                        <input
-                          disabled={isReadOnly}
-                          value={form.contact_phone}
-                          onChange={handlePhoneChange}
-                          placeholder="10-digit number"
-                          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
-                        />
-                        {phoneError && <p className="text-[9px] text-red-500 font-bold">{phoneError}</p>}
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Name</label>
-                        <input
-                          disabled={isReadOnly}
-                          value={form.seller_name}
-                          onChange={e => setForm({ ...form, seller_name: e.target.value })}
-                          placeholder="Enter name"
-                          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
-                        />
-                      </div>
-                    </div>
+                    {(() => {
+                      const propertyUse = String(form.property_use || '').toLowerCase();
+                      const isResidential = propertyUse === 'residential';
+                      const isCommercial = propertyUse === 'commercial';
 
-                    <div className="grid grid-cols-2 gap-8">
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property ID / Title</label>
-                        <input disabled={true} value={selected?.formatted_id || 'NEW LISTING'} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 font-bold text-blue-600" />
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Status</label>
-                        <select disabled={isReadOnly} value={form.rent_status} onChange={e => setForm({ ...form, rent_status: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
-                          {Object.values(RentStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    </div>
+                      return (
+                        <>
+                          <div className="flex flex-col space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                              Approval Status
+                            </label>
 
-                    <div className="grid grid-cols-2 gap-8">
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Amount</label>
-                        <input disabled={isReadOnly} value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Advance Amount</label>
-                        <input disabled={isReadOnly} value={form.advance_amount} onChange={e => setForm({ ...form, advance_amount: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                      </div>
-                    </div>
+                            <select
+                              disabled={isReadOnly}
+                              value={form.status}
+                              onChange={handleStatusChange}
+                              className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="rejected">Rejected</option>
+                            </select>
+                            {form.status === 'approved' && Object.keys(validationErrors).length > 0 && (
+                              <p className="text-[9px] text-red-500 font-bold mt-1">
+                                All required fields must be filled for approved status
+                              </p>
+                            )}
+                          </div>
 
-                    <div className="grid grid-cols-3 gap-8">
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">BHK</label>
-                        <input disabled={isReadOnly} value={form.bhk} onChange={e => setForm({ ...form, bhk: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Use</label>
-                        <select disabled={isReadOnly} value={form.property_use} onChange={e => setForm({ ...form, property_use: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
-                          <option value="residential">Residential</option>
-                          <option value="commercial">Commercial</option>
-                        </select>
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Area ID</label>
-                        <input disabled={isReadOnly} value={form.area_id} onChange={e => setForm({ ...form, area_id: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
-                      </div>
-                    </div>
+                          <div className="grid grid-cols-2 gap-8">
+                            <div className="flex flex-col space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Phone</label>
+                                {mode !== 'view' && checkingSeller && <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
+                                {mode !== 'view' && sellerStatus === 'exists' && <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">EXISTING SELLER</span>}
+                              </div>
+                              <input
+                                data-field="contact_phone"
+                                disabled={isReadOnly}
+                                value={form.contact_phone}
+                                onChange={handlePhoneChange}
+                                placeholder="10-digit number"
+                                className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('contact_phone')} font-semibold`}
+                              />
+                              {phoneError && <p className="text-[9px] text-red-500 font-bold">{phoneError}</p>}
+                              {validationErrors.contact_phone && (
+                                <p className="text-[9px] text-red-500 font-bold">{validationErrors.contact_phone}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Seller Name</label>
+                              <input
+                                disabled={isReadOnly}
+                                value={form.seller_name}
+                                onChange={e => setForm({ ...form, seller_name: e.target.value })}
+                                placeholder="Enter name"
+                                className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-8">
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property ID / Title</label>
+                              <input disabled={true} value={selected?.formatted_id || 'NEW LISTING'} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 font-bold text-blue-600" />
+                            </div>
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Status</label>
+                              <select disabled={isReadOnly} value={form.rent_status} onChange={e => setForm({ ...form, rent_status: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold">
+                                {Object.values(RentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-8">
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Rent Amount</label>
+                              <input
+                                data-field="rent_amount"
+                                disabled={isReadOnly}
+                                value={form.rent_amount}
+                                onChange={e => setForm({ ...form, rent_amount: e.target.value })}
+                                className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('rent_amount')} font-semibold`}
+                              />
+                              {validationErrors.rent_amount && (
+                                <p className="text-[9px] text-red-500 font-bold">{validationErrors.rent_amount}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Advance Amount</label>
+                              <input
+                                data-field="advance_amount"
+                                disabled={isReadOnly}
+                                value={form.advance_amount}
+                                onChange={e => setForm({ ...form, advance_amount: e.target.value })}
+                                className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('advance_amount')} font-semibold`}
+                              />
+                              {validationErrors.advance_amount && (
+                                <p className="text-[9px] text-red-500 font-bold">{validationErrors.advance_amount}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-8">
+                            <div className="flex flex-col space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Use</label>
+                              <select
+                                data-field="property_use"
+                                disabled={isReadOnly}
+                                value={propertyUse}
+                                onChange={handlePropertyUseChange}
+                                className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('property_use')} font-semibold`}
+                              >
+                                <option value="residential">Residential</option>
+                                <option value="commercial">Commercial</option>
+                              </select>
+                              {validationErrors.property_use && (
+                                <p className="text-[9px] text-red-500 font-bold">{validationErrors.property_use}</p>
+                              )}
+                            </div>
+                            {isResidential && (
+                              <div className="flex flex-col space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">BHK</label>
+                                <input
+                                  data-field="bhk"
+                                  disabled={isReadOnly}
+                                  value={form.bhk}
+                                  onChange={e => setForm({ ...form, bhk: e.target.value })}
+                                  className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('bhk')} font-semibold`}
+                                />
+                                {validationErrors.bhk && (
+                                  <p className="text-[9px] text-red-500 font-bold">{validationErrors.bhk}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {isCommercial && (
+                            <div className="grid grid-cols-2 gap-8">
+                              <div className="flex flex-col space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Extent Area</label>
+                                <input
+                                  data-field="extent_area"
+                                  disabled={isReadOnly}
+                                  value={form.extent_area}
+                                  onChange={e => setForm({ ...form, extent_area: e.target.value })}
+                                  className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('extent_area')} font-semibold`}
+                                />
+                                {validationErrors.extent_area && (
+                                  <p className="text-[9px] text-red-500 font-bold">{validationErrors.extent_area}</p>
+                                )}
+                              </div>
+                              <div className="flex flex-col space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Extent Unit</label>
+                                <select
+                                  data-field="extent_unit"
+                                  disabled={isReadOnly}
+                                  value={form.extent_unit}
+                                  onChange={e => setForm({ ...form, extent_unit: e.target.value })}
+                                  className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('extent_unit')} font-semibold`}
+                                >
+                                  <option value="">Select Unit</option>
+                                  <option value="sqft">Sq. Feet</option>
+                                  <option value="sqmt">Sq. Meters</option>
+                                  <option value="acres">Acres</option>
+                                  <option value="cents">Cents</option>
+                                </select>
+                                {validationErrors.extent_unit && (
+                                  <p className="text-[9px] text-red-500 font-bold">{validationErrors.extent_unit}</p>
+                                )}
+                              </div>
+
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
@@ -544,22 +842,57 @@ const RentProperties = () => {
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Latitude</label>
-                        <input disabled={isReadOnly} value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input
+                          data-field="latitude"
+                          disabled={isReadOnly}
+                          value={form.latitude}
+                          onChange={e => setForm({ ...form, latitude: e.target.value })}
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('latitude')} font-semibold`}
+                        />
+                        {validationErrors.latitude && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.latitude}</p>
+                        )}
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Longitude</label>
-                        <input disabled={isReadOnly} value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold" />
+                        <input
+                          data-field="longitude"
+                          disabled={isReadOnly}
+                          value={form.longitude}
+                          onChange={e => setForm({ ...form, longitude: e.target.value })}
+                          className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('longitude')} font-semibold`}
+                        />
+                        {validationErrors.longitude && (
+                          <p className="text-[9px] text-red-500 font-bold">{validationErrors.longitude}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-col space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Location</label>
-                      <LocationSelector district_id={form.district_id} taluk_id={form.taluk_id} village_id={form.village_id} disabled={isReadOnly} onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))} />
+                      <div className={`rounded-xl border ${validationErrors.district_id || validationErrors.taluk_id || validationErrors.village_id ? 'border-red-500 bg-red-50 p-1' : ''}`}>
+                        <LocationSelector
+                          district_id={form.district_id}
+                          taluk_id={form.taluk_id}
+                          village_id={form.village_id}
+                          disabled={isReadOnly}
+                          onChange={(loc) => setForm(prev => ({ ...prev, ...loc }))}
+                        />
+                      </div>
+                      {validationErrors.district_id && (
+                        <p className="text-[9px] text-red-500 font-bold">District is required</p>
+                      )}
+                      {validationErrors.taluk_id && (
+                        <p className="text-[9px] text-red-500 font-bold">Taluk is required</p>
+                      )}
+                      {validationErrors.village_id && (
+                        <p className="text-[9px] text-red-500 font-bold">Village is required</p>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {activeTab === 'assets' && (
+                {activeTab === 'assets' && selected?.property_id && (
                   <PropertyAssetsTabs
                     propertyId={selected.property_id}
                     assets={assets}
@@ -567,6 +900,7 @@ const RentProperties = () => {
                     isReadOnly={isReadOnly}
                   />
                 )}
+
 
               </div>
               <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50 shrink-0">

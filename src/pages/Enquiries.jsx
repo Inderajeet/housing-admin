@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import DataTable from '../components/DataTable';
 import Loader from '../components/Loader';
 import SearchSelect from '../components/SearchSelect';
@@ -17,57 +18,182 @@ const EMPTY_FORM = {
 
 const Enquiries = ({ typeFilter = null }) => {
   const [enquiries, setEnquiries] = useState([]);
+  const [filteredEnquiries, setFilteredEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [enquiryType, setEnquiryType] = useState('buyer'); // 'buyer' or 'seller'
+  
+  const [filters, setFilters] = useState({
+    dateRange: 'all',
+    startDate: '',
+    endDate: '',
+  });
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [contacted, setContacted] = useState(false);
   const [status, setStatus] = useState('');
 
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
-    const data = await getEnquiries(typeFilter);
-    setEnquiries(Array.isArray(data) ? data : []);
-    setLoading(false);
-  }, [typeFilter]);
+    try {
+      const response = await getEnquiries(typeFilter, enquiryType);
+      const data = response.data || response;
+      setEnquiries(Array.isArray(data) ? data : []);
+      setFilteredEnquiries(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching enquiries:', error);
+      setEnquiries([]);
+      setFilteredEnquiries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [typeFilter, enquiryType]);
 
+  // Load data when enquiryType changes
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  // --- FILTERING LOGIC ---
+  useEffect(() => {
+    let result = [...enquiries];
+    
+    // Filter by date
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (filters.dateRange !== 'all') {
+      result = result.filter(e => {
+        const enquiryDate = e.enquiry_date;
+        if (!enquiryDate) return false;
+        
+        const eDate = new Date(enquiryDate);
+        eDate.setHours(0, 0, 0, 0);
+
+        if (filters.dateRange === 'week') {
+          const weekAgo = new Date(todayStart);
+          weekAgo.setDate(todayStart.getDate() - 7);
+          return eDate >= weekAgo;
+        }
+
+        if (filters.dateRange === 'month') {
+          const monthAgo = new Date(todayStart);
+          monthAgo.setMonth(todayStart.getMonth() - 1);
+          return eDate >= monthAgo;
+        }
+
+        if (filters.dateRange === 'custom' && filters.startDate && filters.endDate) {
+          const start = new Date(filters.startDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
+          return eDate >= start && eDate <= end;
+        }
+        return true;
+      });
+    }
+    
+    setFilteredEnquiries(result);
+  }, [filters, enquiries]);
+
+  const handleExport = () => {
+    const dataToExport = filteredEnquiries.map(e => ({
+      Enquiry_ID: e.enquiry_id,
+      Type: enquiryType.toUpperCase(),
+      Name: e.buyer_name || e.seller_name || 'N/A',
+      Phone: e.buyer_phone || e.seller_phone || e.contact_phone || 'N/A',
+      Date: formatDate(e.enquiry_date),
+      Property: e.title || 'N/A',
+      Property_ID: e.formatted_id || 'N/A',
+      Contacted: e.contacted ? 'YES' : 'NO',
+      Status: e.property_status || 'ACTIVE',
+      Booking_Status: e.booking_status || 'N/A'
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Enquiries_Data");
+    XLSX.writeFile(wb, `Enquiries_${enquiryType}_Export.xlsx`);
+  };
+
   const handleView = useCallback((row) => {
     setSelected(row);
     setContacted(row.contacted);
-    setStatus(row.status);
+    setStatus(row.property_status || 'ACTIVE');
     setIsViewOpen(true);
   }, []);
 
   const handleUpdate = async () => {
-    await updateEnquiry(selected.enquiry_id, { contacted, property_status: status });
-    setIsViewOpen(false);
-    loadData();
+    if (!selected) return;
+    try {
+      await updateEnquiry(selected.enquiry_id, { contacted, property_status: status });
+      setIsViewOpen(false);
+      loadData();
+    } catch (error) {
+      console.error('Error updating enquiry:', error);
+      alert('Failed to update enquiry');
+    }
   };
 
   const handleCreate = async () => {
     if (!form.buyer_phone || !form.property_id) return alert("Please fill required fields");
-    await createEnquiry(form);
-    setForm(EMPTY_FORM);
-    setIsCreateOpen(false);
-    loadData();
+    try {
+      await createEnquiry({
+        ...form,
+        enquiry_type: 'buyer'
+      });
+      setForm(EMPTY_FORM);
+      setIsCreateOpen(false);
+      loadData();
+    } catch (error) {
+      console.error('Error creating enquiry:', error);
+      alert('Failed to create enquiry');
+    }
   };
 
-  // STABLE COLUMNS FIX
+  const dropdownClass = "px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all";
+
+  // UPDATED COLUMNS: ID shows formatted_id, only phone number in Name/Phone column
   const columns = useMemo(() => [
-    { header: 'ID', accessor: 'formatted_id', className: 'font-semibold' },
-    { header: 'Type', accessor: e => e.property_type.toUpperCase() },
-    { header: 'Buyer', accessor: e => `${e.buyer_name} (${e.buyer_phone})` },
-    { header: 'Status', accessor: 'status' },
+    { 
+      header: 'ID', 
+      accessor: e => e.formatted_id || 'N/A',
+      className: 'font-semibold text-blue-600' 
+    },
+    { 
+      header: 'Type', 
+      accessor: e => (
+        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${e.enquiry_type === 'seller' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+          {e.enquiry_type === 'seller' ? 'SELLER' : 'BUYER'}
+        </span>
+      )
+    },
+    { 
+      header: 'Phone', 
+      accessor: e => (
+        <div className="font-mono text-sm">
+          {e.buyer_phone || e.seller_phone || e.contact_phone || 'N/A'}
+        </div>
+      ),
+      className: 'min-w-[140px]'
+    },
+    { 
+      header: 'Date', 
+      accessor: e => formatDate(e.enquiry_date),
+      className: 'text-xs text-gray-600'
+    },
     {
       header: 'Contacted',
       accessor: e => (
-        <span className={`font-bold ${e.contacted ? 'text-emerald-600' : 'text-red-500'}`}>
+        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${e.contacted ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
           {e.contacted ? 'YES' : 'NO'}
         </span>
       )
@@ -81,7 +207,7 @@ const Enquiries = ({ typeFilter = null }) => {
               event.stopPropagation();
               handleView(e);
             }}
-            className="p-2 hover:bg-gray-100 rounded-lg text-gray-600"
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
             title="View Details"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -93,12 +219,19 @@ const Enquiries = ({ typeFilter = null }) => {
           <button
             onClick={(event) => {
               event.stopPropagation();
-              let purePhone = e.buyer_phone.replace(/\D/g, '');
+              const phone = e.buyer_phone || e.seller_phone || e.contact_phone;
+              if (!phone) return;
+              
+              let purePhone = phone.replace(/\D/g, '');
               if (purePhone.length === 10) purePhone = '91' + purePhone;
-              const msg = encodeURIComponent(`Hi ${e.buyer_name}, regarding your enquiry for ${e.title}...`);
+              
+              const userName = e.buyer_name || e.seller_name || 'there';
+              const propertyTitle = e.title || 'property';
+              const msg = encodeURIComponent(`Hi ${userName}, regarding your enquiry for ${propertyTitle}...`);
+              
               window.open(`https://wa.me/${purePhone}?text=${msg}`, '_blank');
             }}
-            className="bg-emerald-500 text-white p-2 rounded-lg hover:opacity-80 transition-opacity"
+            className="bg-emerald-500 text-white p-2 rounded-lg hover:bg-emerald-600 transition-colors"
             title="WhatsApp"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -112,86 +245,219 @@ const Enquiries = ({ typeFilter = null }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Enquiries</h2>
-        <button onClick={() => setIsCreateOpen(true)} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase">
-          + Add Enquiry
-        </button>
+      {/* HEADER WITH BUYER/SELLER TABS */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Enquiries</h2>
+          <div className="flex gap-2 mt-2">
+            <button 
+              onClick={() => setEnquiryType('buyer')} 
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${enquiryType === 'buyer' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-500'}`}
+            >
+              Buyer
+            </button>
+            <button 
+              onClick={() => setEnquiryType('seller')} 
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${enquiryType === 'seller' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-gray-100 text-gray-500'}`}
+            >
+              Seller
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleExport} 
+            className="bg-white border border-gray-300 text-gray-700 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-50"
+            disabled={filteredEnquiries.length === 0}
+          >
+            Export Excel ({filteredEnquiries.length})
+          </button>
+          <button 
+            onClick={() => setIsCreateOpen(true)} 
+            className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase shadow-lg hover:bg-slate-800"
+          >
+            + Add Enquiry
+          </button>
+        </div>
       </div>
 
-      {loading ? <Loader text="Loading enquiries..." /> : (
-        <DataTable columns={columns} data={enquiries} />
+      {/* --- FILTER BAR --- */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+        <div className="flex flex-wrap gap-6 items-end">
+          <div className="flex flex-col space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Date Filter</label>
+            <select 
+              value={filters.dateRange} 
+              onChange={e => setFilters({ ...filters, dateRange: e.target.value })} 
+              className={dropdownClass}
+            >
+              <option value="all">All Time</option>
+              <option value="week">Past Week</option>
+              <option value="month">Past Month</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          <button 
+            onClick={() => setFilters({ dateRange: 'all', startDate: '', endDate: '' })} 
+            className="text-[10px] font-bold text-red-500 uppercase pb-3 hover:underline"
+          >
+            Reset
+          </button>
+        </div>
+
+        {filters.dateRange === 'custom' && (
+          <div className="flex gap-4 pt-2 border-t border-gray-50">
+            <input 
+              type="date" 
+              value={filters.startDate} 
+              onChange={e => setFilters({ ...filters, startDate: e.target.value })} 
+              className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" 
+            />
+            <input 
+              type="date" 
+              value={filters.endDate} 
+              onChange={e => setFilters({ ...filters, endDate: e.target.value })} 
+              className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" 
+            />
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <Loader text="Loading enquiries..." />
+      ) : (
+        <DataTable 
+          columns={columns} 
+          data={filteredEnquiries} 
+          emptyMessage={`No ${enquiryType} enquiries found`}
+        />
       )}
 
-      {/* VIEW MODAL (Keeping your CSS) */}
+      {/* VIEW MODAL */}
       {isViewOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-xl overflow-hidden">
-            <div className="px-8 py-6 border-b flex justify-between">
-              <h3 className="text-xl font-bold">Enquiry Details</h3>
-              <button onClick={() => setIsViewOpen(false)}>✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
+            <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">Enquiry Details</h3>
+              <button 
+                className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" 
+                onClick={() => setIsViewOpen(false)}
+              >
+                ✕
+              </button>
             </div>
             <div className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Buyer</p>
-                  <p className="font-semibold">{selected.buyer_name}</p>
-                  <p className="text-sm font-mono text-slate-500">{selected.buyer_phone}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Type</p>
+                  <p className={`font-bold ${selected.enquiry_type === 'seller' ? 'text-purple-600' : 'text-blue-600'}`}>
+                    {selected.enquiry_type === 'seller' ? 'SELLER ENQUIRY' : 'BUYER ENQUIRY'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Seller Phone</p>
-                  <p className="font-semibold">{selected.seller_phone}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Date</p>
+                  <p className="font-semibold">{formatDate(selected.enquiry_date)}</p>
                 </div>
               </div>
-              <div className="p-4 rounded-xl border bg-gray-50">
-                <p className="font-bold">{selected.title}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {selected.property_type.toUpperCase()} · ₹{Number(selected.amount).toLocaleString()}
-                </p>
-              </div>
+              
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest">Contacted</label>
-                  <select value={contacted ? 'yes' : 'no'} onChange={e => setContacted(e.target.value === 'yes')} className="w-full px-4 py-2 rounded-xl border font-semibold">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    {selected.enquiry_type === 'seller' ? 'Seller Name' : 'Buyer Name'}
+                  </p>
+                  <p className="font-semibold">{selected.buyer_name || selected.seller_name || 'N/A'}</p>
+                  <p className="text-sm font-mono text-slate-500">{selected.buyer_phone || selected.seller_phone || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Property ID</p>
+                  <p className="font-semibold font-mono">{selected.formatted_id || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="p-4 rounded-xl border bg-gray-50">
+                <p className="font-bold text-gray-800">{selected.title || 'No Title'}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selected.property_type?.toUpperCase() || 'N/A'} · 
+                  {selected.amount ? ` ₹${Number(selected.amount).toLocaleString()}` : ' Price not specified'}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Contacted</label>
+                  <select 
+                    value={contacted ? 'yes' : 'no'} 
+                    onChange={e => setContacted(e.target.value === 'yes')} 
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
                     <option value="no">NO</option>
                     <option value="yes">YES</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest">Property Status</label>
-                  <select value={status} onChange={e => setStatus(e.target.value)} className="w-full px-4 py-2 rounded-xl border font-semibold">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Status</label>
+                  <select 
+                    value={status} 
+                    onChange={e => setStatus(e.target.value)} 
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
                     <option value="ACTIVE">ACTIVE</option>
                     <option value="HOLD">HOLD</option>
                     <option value="SOLD">SOLD</option>
+                    <option value="RENTED">RENTED</option>
+                    <option value="BOOKED">BOOKED</option>
                   </select>
                 </div>
               </div>
             </div>
-            <div className="px-8 py-6 border-t flex justify-end gap-4">
-              <button onClick={() => setIsViewOpen(false)} className="px-6 py-2 rounded-xl border">Close</button>
-              <button onClick={handleUpdate} className="bg-slate-900 text-white px-8 py-2 rounded-xl">Save</button>
+            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50">
+              <button 
+                onClick={() => setIsViewOpen(false)} 
+                className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100"
+              >
+                Close
+              </button>
+              <button 
+                onClick={handleUpdate} 
+                className="bg-slate-900 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase hover:bg-slate-800"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* CREATE MODAL (Keeping your CSS) */}
+      {/* CREATE MODAL */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white w-full max-w-xl rounded-3xl shadow-xl overflow-hidden">
-            <div className="px-8 py-6 border-b flex justify-between">
-              <h3 className="text-xl font-bold">New Lead / Enquiry</h3>
-              <button onClick={() => setIsCreateOpen(false)}>✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden">
+            <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">New Lead / Enquiry</h3>
+              <button 
+                className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" 
+                onClick={() => setIsCreateOpen(false)}
+              >
+                ✕
+              </button>
             </div>
             <div className="p-8 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col space-y-1">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Buyer Name</label>
-                  <input className="px-4 py-2 border rounded-xl" value={form.buyer_name} onChange={e => setForm({ ...form, buyer_name: e.target.value })} />
+                  <input 
+                    className="px-4 py-2.5 border border-gray-300 rounded-xl font-semibold focus:ring-2 focus:ring-blue-500 outline-none" 
+                    value={form.buyer_name} 
+                    onChange={e => setForm({ ...form, buyer_name: e.target.value })} 
+                  />
                 </div>
                 <div className="flex flex-col space-y-1">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Buyer Phone</label>
-                  <input className="px-4 py-2 border rounded-xl font-mono" value={form.buyer_phone} onChange={e => setForm({ ...form, buyer_phone: e.target.value })} />
+                  <input 
+                    className="px-4 py-2.5 border border-gray-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500 outline-none" 
+                    value={form.buyer_phone} 
+                    onChange={e => setForm({ ...form, buyer_phone: e.target.value })} 
+                  />
                 </div>
               </div>
               <SearchSelect
@@ -211,9 +477,19 @@ const Enquiries = ({ typeFilter = null }) => {
                 onChange={(v) => setForm(p => ({ ...p, property_id: v }))}
               />
             </div>
-            <div className="px-8 py-6 border-t flex justify-end gap-4">
-              <button onClick={() => setIsCreateOpen(false)} className="px-6 py-2 border rounded-xl">Cancel</button>
-              <button onClick={handleCreate} className="bg-slate-900 text-white px-8 py-2 rounded-xl uppercase font-bold text-xs">Create Lead</button>
+            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50">
+              <button 
+                onClick={() => setIsCreateOpen(false)} 
+                className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCreate} 
+                className="bg-slate-900 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase hover:bg-slate-800"
+              >
+                Create Lead
+              </button>
             </div>
           </div>
         </div>

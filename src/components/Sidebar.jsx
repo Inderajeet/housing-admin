@@ -83,6 +83,10 @@ const Sidebar = () => {
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Enquiries</span>
               </NavLink>
+              <NavLink to="/rent/bookings" className={subNavClass}>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
+                <span>Bookings</span>
+              </NavLink>
             </div>
           )}
         </div>
@@ -120,6 +124,10 @@ const Sidebar = () => {
               <NavLink to="/sale/enquiries" className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Enquiries</span>
+              </NavLink>
+              <NavLink to="/sale/bookings" className={subNavClass}>
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
+                <span>Bookings</span>
               </NavLink>
             </div>
           )}

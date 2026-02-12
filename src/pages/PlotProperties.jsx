@@ -39,6 +39,7 @@ const PlotProperties = () => {
       const layoutResponse = await getPlotLayout(p.property_id);
       setActiveProject({
         property_id: p.property_id,
+        formatted_id: p.formatted_id,
         layout: layoutResponse.data || []
       });
       // Navigate to the specific URL for this plot
@@ -51,7 +52,7 @@ const PlotProperties = () => {
   // Columns
   // -------------------------
   const columns = [
-    { header: 'Property ID', accessor: 'property_id' },
+    { header: 'Property ID', accessor: 'formatted_id' },
 
     {
       header: 'Title',
@@ -61,8 +62,7 @@ const PlotProperties = () => {
 
     {
       header: 'Seller Phone',
-      accessor: 'seller_phone',
-      className: 'font-mono text-xs'
+      accessor: 'seller_phone'
     },
 
     {
