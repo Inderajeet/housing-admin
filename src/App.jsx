@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-import { LocationProvider } from './context/LocationContext'; 
+import { LocationProvider } from './context/LocationContext';
 
 // Pages & Components
 import Sidebar from './components/Sidebar';
@@ -16,6 +16,8 @@ import SaleProperties from './pages/SaleProperties';
 import Buyers from './pages/Buyers';
 import PremiumProperties from './components/PremiumProperties';
 import Bookings from './pages/Bookings';
+import FlatProperties from './pages/FlatProperties';
+import FlatLayoutEditor from './pages/FlatLayoutEditor';
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -41,10 +43,10 @@ const App = () => {
                   <Routes>
                     <Route path="/" element={<Navigate to="/dashboard" />} />
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/rent/premium-properties" element={<PremiumProperties type='rent'/>} />
-                    <Route path="/sale/premium-properties" element={<PremiumProperties type='sale'/>} />
-                    <Route path="/sale/bookings" element={<Bookings type='sale'/>} />
-                    <Route path="/rent/bookings" element={<Bookings type='rent'/>} />
+                    <Route path="/rent/premium-properties" element={<PremiumProperties type='rent' />} />
+                    <Route path="/sale/premium-properties" element={<PremiumProperties type='sale' />} />
+                    <Route path="/sale/bookings" element={<Bookings type='sale' />} />
+                    <Route path="/rent/bookings" element={<Bookings type='rent' />} />
                     <Route
                       path="/rent/owners"
                       element={<Sellers title="Rent Owners" typeFilter="rent" />}
@@ -72,10 +74,12 @@ const App = () => {
                       path="/sale/enquiries"
                       element={<Enquiries title="Sale Enquiries" typeFilter="sale" />}
                     />
-                    
+
                     {/* Plot Routes */}
                     <Route path="/plots" element={<PlotProperties />} />
                     <Route path="/plots/editor/:id" element={<PlotLayoutEditor />} />
+                    <Route path="/flats" element={<FlatProperties />} />
+                    <Route path="/flats/editor/:id" element={<FlatLayoutEditor />} />
                   </Routes>
                 </div>
               </main>

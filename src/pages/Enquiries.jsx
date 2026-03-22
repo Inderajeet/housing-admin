@@ -7,6 +7,7 @@ import SearchSelect from '../components/SearchSelect';
 import { getEnquiries, createEnquiry, updateEnquiry } from '../api/enquiry.api';
 import { getSaleProperties } from '../api/sale.api';
 import { getRentProperties } from '../api/rent.api';
+import { api } from '../api/api';
 
 const EMPTY_FORM = {
   property_type: 'sale',
@@ -17,30 +18,38 @@ const EMPTY_FORM = {
 };
 
 const Enquiries = ({ typeFilter = null }) => {
-  const [enquiries, setEnquiries] = useState([]);
+  const [enquiries, setEnquiries]               = useState([]);
   const [filteredEnquiries, setFilteredEnquiries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [enquiryType, setEnquiryType] = useState('buyer'); // 'buyer' or 'seller'
-  
+  const [loading, setLoading]                   = useState(true);
+  const [selected, setSelected]                 = useState(null);
+  const [isViewOpen, setIsViewOpen]             = useState(false);
+  const [isCreateOpen, setIsCreateOpen]         = useState(false);
+  const [enquiryType, setEnquiryType]           = useState('buyer');
+
   const [filters, setFilters] = useState({
     dateRange: 'all',
     startDate: '',
     endDate: '',
   });
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm]         = useState(EMPTY_FORM);
   const [contacted, setContacted] = useState(false);
-  const [status, setStatus] = useState('');
+  const [status, setStatus]     = useState('');
 
+  // ── Property Preview Modal state ─────────────────────────────────────────
+  const [propModalOpen, setPropModalOpen] = useState(false);
+  const [propData, setPropData]           = useState(null);
+  const [propLoading, setPropLoading]     = useState(false);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    }).format(new Date(dateString));
   };
 
+  // ── Fetch enquiries ───────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -57,25 +66,18 @@ const Enquiries = ({ typeFilter = null }) => {
     }
   }, [typeFilter, enquiryType]);
 
-  // Load data when enquiryType changes
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  // --- FILTERING LOGIC ---
+  // ── Date filtering ────────────────────────────────────────────────────────
   useEffect(() => {
     let result = [...enquiries];
-    
-    // Filter by date
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     if (filters.dateRange !== 'all') {
       result = result.filter(e => {
-        const enquiryDate = e.enquiry_date;
-        if (!enquiryDate) return false;
-        
-        const eDate = new Date(enquiryDate);
+        if (!e.enquiry_date) return false;
+        const eDate = new Date(e.enquiry_date);
         eDate.setHours(0, 0, 0, 0);
 
         if (filters.dateRange === 'week') {
@@ -83,13 +85,11 @@ const Enquiries = ({ typeFilter = null }) => {
           weekAgo.setDate(todayStart.getDate() - 7);
           return eDate >= weekAgo;
         }
-
         if (filters.dateRange === 'month') {
           const monthAgo = new Date(todayStart);
           monthAgo.setMonth(todayStart.getMonth() - 1);
           return eDate >= monthAgo;
         }
-
         if (filters.dateRange === 'custom' && filters.startDate && filters.endDate) {
           const start = new Date(filters.startDate);
           start.setHours(0, 0, 0, 0);
@@ -100,30 +100,30 @@ const Enquiries = ({ typeFilter = null }) => {
         return true;
       });
     }
-    
     setFilteredEnquiries(result);
   }, [filters, enquiries]);
 
+  // ── Export ────────────────────────────────────────────────────────────────
   const handleExport = () => {
     const dataToExport = filteredEnquiries.map(e => ({
-      Enquiry_ID: e.enquiry_id,
-      Type: enquiryType.toUpperCase(),
-      Name: e.buyer_name || e.seller_name || 'N/A',
-      Phone: e.buyer_phone || e.seller_phone || e.contact_phone || 'N/A',
-      Date: formatDate(e.enquiry_date),
-      Property: e.title || 'N/A',
-      Property_ID: e.formatted_id || 'N/A',
-      Contacted: e.contacted ? 'YES' : 'NO',
-      Status: e.property_status || 'ACTIVE',
-      Booking_Status: e.booking_status || 'N/A'
+      Enquiry_ID:     e.enquiry_id,
+      Type:           enquiryType.toUpperCase(),
+      Name:           e.buyer_name || e.seller_name || 'N/A',
+      Phone:          e.buyer_phone || e.seller_phone || e.contact_phone || 'N/A',
+      Date:           formatDate(e.enquiry_date),
+      Property:       e.title || 'N/A',
+      Property_ID:    e.formatted_id || 'N/A',
+      Contacted:      e.contacted ? 'YES' : 'NO',
+      Status:         e.property_status || 'ACTIVE',
+      Booking_Status: e.booking_status || 'N/A',
     }));
-    
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Enquiries_Data");
+    XLSX.utils.book_append_sheet(wb, ws, 'Enquiries_Data');
     XLSX.writeFile(wb, `Enquiries_${enquiryType}_Export.xlsx`);
   };
 
+  // ── Enquiry view/update ───────────────────────────────────────────────────
   const handleView = useCallback((row) => {
     setSelected(row);
     setContacted(row.contacted);
@@ -144,12 +144,9 @@ const Enquiries = ({ typeFilter = null }) => {
   };
 
   const handleCreate = async () => {
-    if (!form.buyer_phone || !form.property_id) return alert("Please fill required fields");
+    if (!form.buyer_phone || !form.property_id) return alert('Please fill required fields');
     try {
-      await createEnquiry({
-        ...form,
-        enquiry_type: 'buyer'
-      });
+      await createEnquiry({ ...form, enquiry_type: 'buyer' });
       setForm(EMPTY_FORM);
       setIsCreateOpen(false);
       loadData();
@@ -159,36 +156,57 @@ const Enquiries = ({ typeFilter = null }) => {
     }
   };
 
-  const dropdownClass = "px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all";
+  // ── View Property modal ───────────────────────────────────────────────────
+  const handleViewProperty = async (e, event) => {
+    event.stopPropagation();
+    setPropData(null);
+    setPropModalOpen(true);
+    setPropLoading(true);
+    try {
+      // rent goes to /rent/:id, everything else (sale/plot/flat) to /sale/:id
+      const endpoint = e.property_type === 'rent'
+        ? `/rent/${e.property_id}`
+        : `/sale/${e.property_id}`;
+      const res = await api.get(endpoint);
+      setPropData(res.data);
+    } catch (err) {
+      console.error(err);
+      setPropData({ _error: 'Failed to load property details' });
+    } finally {
+      setPropLoading(false);
+    }
+  };
 
-  // UPDATED COLUMNS: ID shows formatted_id, only phone number in Name/Phone column
+  // ── Columns ───────────────────────────────────────────────────────────────
+  const dropdownClass = 'px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 transition-all';
+
   const columns = useMemo(() => [
-    { 
-      header: 'ID', 
+    {
+      header: 'ID',
       accessor: e => e.formatted_id || 'N/A',
-      className: 'font-semibold text-blue-600' 
+      className: 'font-semibold text-blue-600',
     },
-    { 
-      header: 'Type', 
+    {
+      header: 'Type',
       accessor: e => (
         <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${e.enquiry_type === 'seller' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
           {e.enquiry_type === 'seller' ? 'SELLER' : 'BUYER'}
         </span>
-      )
+      ),
     },
-    { 
-      header: 'Phone', 
+    {
+      header: 'Phone',
       accessor: e => (
         <div className="font-mono text-sm">
           {e.buyer_phone || e.seller_phone || e.contact_phone || 'N/A'}
         </div>
       ),
-      className: 'min-w-[140px]'
+      className: 'min-w-[140px]',
     },
-    { 
-      header: 'Date', 
+    {
+      header: 'Date',
       accessor: e => formatDate(e.enquiry_date),
-      className: 'text-xs text-gray-600'
+      className: 'text-xs text-gray-600',
     },
     {
       header: 'Contacted',
@@ -196,19 +214,18 @@ const Enquiries = ({ typeFilter = null }) => {
         <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${e.contacted ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
           {e.contacted ? 'YES' : 'NO'}
         </span>
-      )
+      ),
     },
     {
       header: 'Actions',
+      sortable: false,
       accessor: e => (
         <div className="flex items-center gap-2">
+          {/* View Enquiry */}
           <button
-            onClick={(event) => {
-              event.stopPropagation();
-              handleView(e);
-            }}
+            onClick={(event) => { event.stopPropagation(); handleView(e); }}
             className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-            title="View Details"
+            title="View Enquiry"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -216,79 +233,90 @@ const Enquiries = ({ typeFilter = null }) => {
             </svg>
           </button>
 
+          {/* ✅ View Property — opens centered modal */}
+          <button
+            onClick={(event) => handleViewProperty(e, event)}
+            className="p-2 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors"
+            title="View Property"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </button>
+
+          {/* WhatsApp */}
           <button
             onClick={(event) => {
               event.stopPropagation();
               const phone = e.buyer_phone || e.seller_phone || e.contact_phone;
               if (!phone) return;
-              
               let purePhone = phone.replace(/\D/g, '');
               if (purePhone.length === 10) purePhone = '91' + purePhone;
-              
               const userName = e.buyer_name || e.seller_name || 'there';
-              const propertyTitle = e.title || 'property';
-              const msg = encodeURIComponent(`Hi ${userName}, regarding your enquiry for ${propertyTitle}...`);
-              
+              const msg = encodeURIComponent(`Hi ${userName}, regarding your enquiry for ${e.title || 'property'}...`);
               window.open(`https://wa.me/${purePhone}?text=${msg}`, '_blank');
             }}
             className="bg-emerald-500 text-white p-2 rounded-lg hover:bg-emerald-600 transition-colors"
             title="WhatsApp"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+              <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.554 4.107 1.523 5.836L0 24l6.335-1.499A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.36-.214-3.732.883.936-3.619-.235-.372A9.818 9.818 0 1112 21.818z" />
             </svg>
           </button>
         </div>
-      )
-    }
+      ),
+    },
   ], [handleView]);
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* HEADER WITH BUYER/SELLER TABS */}
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Enquiries</h2>
-          <div className="flex gap-2 mt-2">
-            <button 
-              onClick={() => setEnquiryType('buyer')} 
-              className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${enquiryType === 'buyer' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-500'}`}
-            >
-              Buyer
-            </button>
-            <button 
-              onClick={() => setEnquiryType('seller')} 
-              className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${enquiryType === 'seller' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-gray-100 text-gray-500'}`}
-            >
-              Seller
-            </button>
-          </div>
+          <h2 className="text-2xl font-bold text-gray-800">
+            {typeFilter === 'rent' ? 'Rent' : 'Sale'} Enquiries
+          </h2>
+          <p className="text-gray-500 text-xs uppercase tracking-widest">Lead Management</p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={handleExport} 
-            className="bg-white border border-gray-300 text-gray-700 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-50"
-            disabled={filteredEnquiries.length === 0}
-          >
-            Export Excel ({filteredEnquiries.length})
+          <button onClick={handleExport} className="bg-white border border-gray-300 text-gray-700 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-50">
+            Export Excel
           </button>
-          <button 
-            onClick={() => setIsCreateOpen(true)} 
-            className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase shadow-lg hover:bg-slate-800"
-          >
-            + Add Enquiry
+          <button onClick={() => setIsCreateOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase shadow-lg shadow-blue-200 hover:bg-blue-700">
+            + New Enquiry
           </button>
         </div>
       </div>
 
-      {/* --- FILTER BAR --- */}
+      {/* Filter Bar */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
         <div className="flex flex-wrap gap-6 items-end">
+          {/* Buyer / Seller toggle */}
+          <div className="flex flex-col space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Enquiry Type</label>
+            <div className="flex gap-2">
+              {['buyer', 'seller'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => setEnquiryType(t)}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all
+                    ${enquiryType === t ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Date range */}
           <div className="flex flex-col space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Date Filter</label>
-            <select 
-              value={filters.dateRange} 
-              onChange={e => setFilters({ ...filters, dateRange: e.target.value })} 
+            <select
+              value={filters.dateRange}
+              onChange={e => setFilters({ ...filters, dateRange: e.target.value })}
               className={dropdownClass}
             >
               <option value="all">All Time</option>
@@ -297,8 +325,9 @@ const Enquiries = ({ typeFilter = null }) => {
               <option value="custom">Custom Range</option>
             </select>
           </div>
-          <button 
-            onClick={() => setFilters({ dateRange: 'all', startDate: '', endDate: '' })} 
+
+          <button
+            onClick={() => setFilters({ dateRange: 'all', startDate: '', endDate: '' })}
             className="text-[10px] font-bold text-red-500 uppercase pb-3 hover:underline"
           >
             Reset
@@ -307,44 +336,30 @@ const Enquiries = ({ typeFilter = null }) => {
 
         {filters.dateRange === 'custom' && (
           <div className="flex gap-4 pt-2 border-t border-gray-50">
-            <input 
-              type="date" 
-              value={filters.startDate} 
-              onChange={e => setFilters({ ...filters, startDate: e.target.value })} 
-              className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" 
-            />
-            <input 
-              type="date" 
-              value={filters.endDate} 
-              onChange={e => setFilters({ ...filters, endDate: e.target.value })} 
-              className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" 
-            />
+            <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" />
+            <input type="date" value={filters.endDate}   onChange={e => setFilters({ ...filters, endDate: e.target.value })}   className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold" />
           </div>
         )}
       </div>
 
+      {/* Table */}
       {loading ? (
         <Loader text="Loading enquiries..." />
       ) : (
-        <DataTable 
-          columns={columns} 
-          data={filteredEnquiries} 
+        <DataTable
+          columns={columns}
+          data={filteredEnquiries}
           emptyMessage={`No ${enquiryType} enquiries found`}
         />
       )}
 
-      {/* VIEW MODAL */}
+      {/* ── ENQUIRY VIEW MODAL ─────────────────────────────────────────────── */}
       {isViewOpen && selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
             <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
               <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">Enquiry Details</h3>
-              <button 
-                className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" 
-                onClick={() => setIsViewOpen(false)}
-              >
-                ✕
-              </button>
+              <button className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" onClick={() => setIsViewOpen(false)}>✕</button>
             </div>
             <div className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-6">
@@ -359,7 +374,7 @@ const Enquiries = ({ typeFilter = null }) => {
                   <p className="font-semibold">{formatDate(selected.enquiry_date)}</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
@@ -373,54 +388,40 @@ const Enquiries = ({ typeFilter = null }) => {
                   <p className="font-semibold font-mono">{selected.formatted_id || 'N/A'}</p>
                 </div>
               </div>
-              
+
               <div className="p-4 rounded-xl border bg-gray-50">
                 <p className="font-bold text-gray-800">{selected.title || 'No Title'}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {selected.property_type?.toUpperCase() || 'N/A'} · 
-                  {selected.amount ? ` ₹${Number(selected.amount).toLocaleString()}` : ' Price not specified'}
+                  {selected.property_type?.toUpperCase() || 'N/A'} ·{' '}
+                  {selected.amount ? `₹${Number(selected.amount).toLocaleString()}` : 'Price N/A'}
                 </p>
               </div>
-              
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Contacted</label>
-                  <select 
-                    value={contacted ? 'yes' : 'no'} 
-                    onChange={e => setContacted(e.target.value === 'yes')} 
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="no">NO</option>
-                    <option value="yes">YES</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Property Status</label>
-                  <select 
-                    value={status} 
-                    onChange={e => setStatus(e.target.value)} 
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="HOLD">HOLD</option>
-                    <option value="SOLD">SOLD</option>
-                    <option value="RENTED">RENTED</option>
-                    <option value="BOOKED">BOOKED</option>
-                  </select>
+
+              {/* Contacted toggle */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Contacted</p>
+                <div className="flex gap-2">
+                  {[true, false].map(v => (
+                    <button
+                      key={String(v)}
+                      onClick={() => setContacted(v)}
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all
+                        ${contacted === v
+                          ? v ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
+                          : 'bg-gray-100 text-gray-500'}`}
+                    >
+                      {v ? 'Yes' : 'No'}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50">
-              <button 
-                onClick={() => setIsViewOpen(false)} 
-                className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100"
-              >
+
+            <div className="px-8 py-6 border-t flex justify-end gap-3 bg-gray-50">
+              <button onClick={() => setIsViewOpen(false)} className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100">
                 Close
               </button>
-              <button 
-                onClick={handleUpdate} 
-                className="bg-slate-900 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase hover:bg-slate-800"
-              >
+              <button onClick={handleUpdate} className="bg-slate-900 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase hover:bg-slate-800">
                 Save Changes
               </button>
             </div>
@@ -428,36 +429,23 @@ const Enquiries = ({ typeFilter = null }) => {
         </div>
       )}
 
-      {/* CREATE MODAL */}
+      {/* ── CREATE MODAL ──────────────────────────────────────────────────── */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden">
             <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
               <h3 className="text-xl font-bold uppercase tracking-tight text-gray-800">New Lead / Enquiry</h3>
-              <button 
-                className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" 
-                onClick={() => setIsCreateOpen(false)}
-              >
-                ✕
-              </button>
+              <button className="text-2xl text-gray-400 hover:text-gray-600 transition-colors" onClick={() => setIsCreateOpen(false)}>✕</button>
             </div>
             <div className="p-8 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col space-y-1">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Buyer Name</label>
-                  <input 
-                    className="px-4 py-2.5 border border-gray-300 rounded-xl font-semibold focus:ring-2 focus:ring-blue-500 outline-none" 
-                    value={form.buyer_name} 
-                    onChange={e => setForm({ ...form, buyer_name: e.target.value })} 
-                  />
+                  <input className="px-4 py-2.5 border border-gray-300 rounded-xl font-semibold focus:ring-2 focus:ring-blue-500 outline-none" value={form.buyer_name} onChange={e => setForm({ ...form, buyer_name: e.target.value })} />
                 </div>
                 <div className="flex flex-col space-y-1">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Buyer Phone</label>
-                  <input 
-                    className="px-4 py-2.5 border border-gray-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500 outline-none" 
-                    value={form.buyer_phone} 
-                    onChange={e => setForm({ ...form, buyer_phone: e.target.value })} 
-                  />
+                  <input className="px-4 py-2.5 border border-gray-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={form.buyer_phone} onChange={e => setForm({ ...form, buyer_phone: e.target.value })} />
                 </div>
               </div>
               <SearchSelect
@@ -471,30 +459,129 @@ const Enquiries = ({ typeFilter = null }) => {
               <SearchSelect
                 label="Select Property"
                 value={form.property_id}
-                fetchOptions={(q) => form.property_type === 'sale' ? getSaleProperties(q) : getRentProperties(q)}
-                getOptionValue={p => p.property_id}
-                getOptionLabel={p => `[${p.formatted_id}] ${p.title}`}
+                fetchOptions={(q) =>
+                  form.property_type === 'sale'
+                    ? getSaleProperties().then(d => d.filter(p => p.formatted_id?.includes(q) || p.title?.toLowerCase().includes(q?.toLowerCase())))
+                    : getRentProperties().then(d => d.filter(p => p.formatted_id?.includes(q) || p.title?.toLowerCase().includes(q?.toLowerCase())))
+                }
+                getOptionValue={o => o.property_id}
+                getOptionLabel={o => `${o.formatted_id} — ${o.title}`}
                 onChange={(v) => setForm(p => ({ ...p, property_id: v }))}
               />
             </div>
-            <div className="px-8 py-6 border-t flex justify-end gap-4 bg-gray-50">
-              <button 
-                onClick={() => setIsCreateOpen(false)} 
-                className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleCreate} 
-                className="bg-slate-900 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase hover:bg-slate-800"
-              >
-                Create Lead
+            <div className="px-8 py-6 border-t flex justify-end gap-3 bg-gray-50">
+              <button onClick={() => setIsCreateOpen(false)} className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100">Cancel</button>
+              <button onClick={handleCreate} className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold text-xs uppercase shadow-lg hover:bg-blue-700">Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PROPERTY PREVIEW MODAL ────────────────────────────────────────── */}
+      {propModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
+
+            <div className="px-8 py-5 border-b flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-lg font-bold uppercase tracking-tight text-gray-800">Property Details</h3>
+              <button onClick={() => setPropModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 transition-colors">✕</button>
+            </div>
+
+            <div className="p-8">
+              {propLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                </div>
+              ) : propData?._error ? (
+                <p className="text-red-500 font-bold text-center py-8">{propData._error}</p>
+              ) : propData ? (
+                <div className="space-y-5">
+
+                  {/* ID + Type */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Property ID</p>
+                      <p className="font-bold font-mono text-blue-700">{propData.formatted_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Type</p>
+                      <p className="font-bold uppercase">{propData.property_type || propData.sale_type || '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Title */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Title</p>
+                    <p className="font-semibold text-gray-800">{propData.title || '—'}</p>
+                  </div>
+
+                  {/* Status */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Approval</p>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase
+                        ${propData.status === 'approved' ? 'bg-emerald-100 text-emerald-700'
+                        : propData.status === 'pending'  ? 'bg-amber-100 text-amber-700'
+                        : 'bg-gray-100 text-gray-600'}`}>
+                        {propData.status || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        {propData.rent_status ? 'Rent Status' : 'Sale Status'}
+                      </p>
+                      <p className="font-semibold">{propData.rent_status || propData.sale_status || '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Price */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        {propData.rent_amount ? 'Rent/Month' : 'Price'}
+                      </p>
+                      <p className="font-bold text-lg">
+                        ₹{Number(propData.rent_amount || propData.price || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        {propData.bhk ? 'BHK' : 'Sale Type'}
+                      </p>
+                      <p className="font-semibold uppercase">{propData.bhk || propData.sale_type || '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Seller */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Seller / Owner</p>
+                    <p className="font-semibold">{propData.seller_name || '—'}</p>
+                    <p className="text-sm font-mono text-slate-500">{propData.contact_phone || propData.seller_phone || '—'}</p>
+                  </div>
+
+                  {/* Location */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Location</p>
+                    <p className="font-semibold text-sm">
+                      {[propData.village_name, propData.taluk_name, propData.district_name]
+                        .filter(Boolean).join(', ') || propData.address || '—'}
+                    </p>
+                  </div>
+
+                </div>
+              ) : null}
+            </div>
+
+            <div className="px-8 py-5 border-t bg-gray-50 flex justify-end">
+              <button onClick={() => setPropModalOpen(false)} className="px-6 py-2 rounded-xl border border-gray-300 font-bold text-xs uppercase text-gray-600 hover:bg-gray-100">
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>  
+
+    </div>
   );
 };
 

@@ -1,7 +1,7 @@
 import {api} from './api';
 
 export const getPlotProperties = async () => {
-  const { data } = await api.get('/plot-properties');
+  const { data } = await api.get('/plot-projects');
   return data;
 };
 

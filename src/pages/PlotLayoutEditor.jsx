@@ -4,6 +4,35 @@ import { getPlotLayout, savePlotLayout } from '../api/plot.api';
 import toast from 'react-hot-toast';
 import { useApp } from '../App';
 
+const getBookingStatusStyles = (status) => {
+    const normalizedStatus = String(status || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_');
+
+    if (normalizedStatus === 'NIL_BOOKING') {
+        return {
+            tile: 'bg-emerald-500 text-white shadow-inner',
+            buttonActive: 'bg-emerald-500 text-white border-emerald-600',
+            buttonInactive: 'bg-white text-emerald-600 border-emerald-100'
+        };
+    }
+
+    if (normalizedStatus === 'ON_BOOKING' || normalizedStatus === 'BOOKED') {
+        return {
+            tile: 'bg-yellow-400 text-slate-900 shadow-inner',
+            buttonActive: 'bg-yellow-400 text-slate-900 border-yellow-500',
+            buttonInactive: 'bg-white text-yellow-600 border-yellow-100'
+        };
+    }
+
+    return {
+        tile: 'bg-red-500 text-white shadow-inner',
+        buttonActive: 'bg-red-500 text-white border-red-600',
+        buttonInactive: 'bg-white text-red-600 border-red-100'
+    };
+};
+
 const PlotLayoutEditor = () => {
     const navigate = useNavigate();
     const { id } = useParams();
@@ -56,8 +85,24 @@ const PlotLayoutEditor = () => {
             try {
                 const res = await getPlotLayout(id);
                 const rawItems = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+                const unitStatusByKey = new Map();
                 const mapped = {};
                 let maxR = 40, maxC = 60;
+
+                rawItems.forEach(item => {
+                    if (item.type !== 'PLOT') return;
+
+                    const unitKeyCandidates = [
+                        item.plot_unit_id != null ? `id:${item.plot_unit_id}` : null,
+                        item.plot_number ? `name:${String(item.plot_number).trim()}` : null,
+                        item.name ? `name:${String(item.name).trim()}` : null,
+                    ].filter(Boolean);
+
+                    const hasCoordinates = !isNaN(parseInt(item.x, 10)) && !isNaN(parseInt(item.y, 10));
+                    if (!hasCoordinates && item.status) {
+                        unitKeyCandidates.forEach(key => unitStatusByKey.set(key, item.status));
+                    }
+                });
 
                 rawItems.forEach(item => {
                     const x = parseInt(item.x, 10), y = parseInt(item.y, 10);
@@ -65,6 +110,13 @@ const PlotLayoutEditor = () => {
                     if (isNaN(x) || isNaN(y)) return;
                     if (y + h > maxR) maxR = y + h + 5;
                     if (x + w > maxC) maxC = x + w + 5;
+
+                    const resolvedStatus = item.type === 'PLOT'
+                        ? unitStatusByKey.get(`id:${item.plot_unit_id}`) ||
+                          unitStatusByKey.get(`name:${String(item.name || item.plot_number || '').trim()}`) ||
+                          item.status ||
+                          'Nil Booking'
+                        : item.status;
 
                     const key = `${y}-${x}`;
                     mapped[key] = {
@@ -74,7 +126,7 @@ const PlotLayoutEditor = () => {
                         display_name: item.name || item.label || '',
                         isManual: isNaN(item.name) && item.type === 'PLOT',
                         type: item.type || 'PLOT',
-                        status: item.status || 'NIL_BOOKING',
+                        status: resolvedStatus,
                         rotation: item.rotation || 0,
                         color: item.color || (item.type === 'TEXT' ? '#1e293b' : '#ffffff'),
                         font_size: item.font_size || 10,
@@ -139,18 +191,18 @@ const PlotLayoutEditor = () => {
             }
         } else {
             const isText = type === 'TEXT';
-            const anchorKey = `${rMin}-${cMin}`;
             for (let r = rMin; r <= rMax; r++) {
                 for (let c = cMin; c <= cMax; c++) {
                     const key = `${r}-${c}`;
                     const isAnchor = r === rMin && c === cMin;
                     newGrid[key] = {
                         type, row: r, col: c,
-                        merged: isText ? !isAnchor : false,
-                        colSpan: isAnchor && isText ? (cMax - cMin + 1) : 1,
-                        rowSpan: isAnchor && isText ? (rMax - rMin + 1) : 1,
+                        merged: isText ? false : !isAnchor,
+                        anchorKey: isAnchor ? null : `${rMin}-${cMin}`,
+                        colSpan: isAnchor ? (cMax - cMin + 1) : 1,
+                        rowSpan: isAnchor ? (rMax - rMin + 1) : 1,
                         display_name: isAnchor ? (isText ? 'LABEL' : '') : '',
-                        status: 'NIL_BOOKING',
+                        status: 'Nil Booking',
                         rotation: 0,
                         color: isText ? '#2563eb' : '#ffffff',
                         font_size: isText ? 14 : 10,
@@ -218,9 +270,7 @@ const PlotLayoutEditor = () => {
                                 let cellStyle = {};
 
                                 if (cell?.type === 'PLOT') {
-                                    if (cell.status === 'BOOKED') cellClass += "bg-red-500 text-white shadow-inner";
-                                    else if (cell.status === 'ON_BOOKING') cellClass += "bg-yellow-400 text-slate-900 shadow-inner";
-                                    else cellClass += "bg-emerald-500 text-white shadow-inner"; 
+                                    cellClass += getBookingStatusStyles(cell.status).tile;
                                     
                                     cellStyle = {
                                         fontSize: `${cell.font_size}px`,
@@ -343,22 +393,22 @@ const PlotLayoutEditor = () => {
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Booking Status</label>
                                 <div className="grid grid-cols-1 gap-2 mt-2">
                                     <button 
-                                        onClick={() => setGridData(prev => ({...prev, [selectedCellKey]: {...prev[selectedCellKey], status: 'NIL_BOOKING'}}))}
-                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${activeCell.status === 'NIL_BOOKING' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-100'}`}
+                                        onClick={() => setGridData(prev => ({...prev, [selectedCellKey]: {...prev[selectedCellKey], status: 'Nil Booking'}}))}
+                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${getBookingStatusStyles('Nil Booking')[String(activeCell.status || '').trim().toUpperCase().replace(/[\s-]+/g, '_') === 'NIL_BOOKING' ? 'buttonActive' : 'buttonInactive']}`}
                                     >
                                         Nil Booking (Green)
                                     </button>
                                     <button 
                                         onClick={() => setGridData(prev => ({...prev, [selectedCellKey]: {...prev[selectedCellKey], status: 'ON_BOOKING'}}))}
-                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${activeCell.status === 'ON_BOOKING' ? 'bg-yellow-400 text-slate-900 border-yellow-500' : 'bg-white text-yellow-600 border-yellow-100'}`}
+                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${getBookingStatusStyles('ON_BOOKING')[String(activeCell.status || '').trim().toUpperCase().replace(/[\s-]+/g, '_') === 'ON_BOOKING' ? 'buttonActive' : 'buttonInactive']}`}
                                     >
                                         On Booking (Yellow)
                                     </button>
                                     <button 
                                         onClick={() => setGridData(prev => ({...prev, [selectedCellKey]: {...prev[selectedCellKey], status: 'BOOKED'}}))}
-                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${activeCell.status === 'BOOKED' ? 'bg-red-500 text-white border-red-600' : 'bg-white text-red-600 border-red-100'}`}
+                                        className={`p-3 rounded-xl text-[11px] font-bold uppercase transition-all border ${getBookingStatusStyles('BOOKED')[String(activeCell.status || '').trim().toUpperCase().replace(/[\s-]+/g, '_') === 'BOOKED' ? 'buttonActive' : 'buttonInactive']}`}
                                     >
-                                        Booked (Red)
+                                        Booked (Yellow)
                                     </button>
                                 </div>
                             </div>

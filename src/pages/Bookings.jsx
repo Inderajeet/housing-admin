@@ -33,14 +33,30 @@ const Bookings = ({ type = null }) => { // Accept type prop from route
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
+  const routeUnitType = type || 'all';
   
   const [filters, setFilters] = useState({
     dateRange: 'all',
     startDate: '',
     endDate: '',
     status: 'all',
-    unit_type: type || 'all' // Set initial from route prop
+    unit_type: routeUnitType // Set initial from route prop
   });
+
+  useEffect(() => {
+    setFilters(prevFilters => {
+      if (prevFilters.unit_type === routeUnitType) {
+        return prevFilters;
+      }
+
+      return {
+        ...prevFilters,
+        unit_type: routeUnitType
+      };
+    });
+    setSelected(null);
+    setIsViewOpen(false);
+  }, [routeUnitType]);
 
   // Format date in IST
   const formatDate = (dateString) => {
@@ -328,7 +344,7 @@ const Bookings = ({ type = null }) => { // Accept type prop from route
               startDate: '', 
               endDate: '', 
               status: 'all', 
-              unit_type: type || 'all' 
+              unit_type: routeUnitType 
             })} 
             className="text-[10px] font-bold text-red-500 uppercase pb-3 hover:underline"
           >

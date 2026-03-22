@@ -25,7 +25,7 @@ const EMPTY_FORM = {
   taluk_id: null,
   village_id: null,
   area_id: '',
-  status: PropertyStatus.ACTIVE,
+  status: 'pending',
   sale_type: SaleType.LAND,
   price: '',
   area_size: '',
@@ -909,6 +909,7 @@ const SaleProperties = () => {
                     assets={assets}
                     setAssets={setAssets}
                     isReadOnly={isReadOnly}
+                    propertyData={selected}
                   />
                 )}
               </div>

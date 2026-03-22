@@ -12,14 +12,10 @@ export const LocationProvider = ({ children }) => {
   const fetchLocations = async () => {
     try {
       setLoading(true);
-      const [d, t, v] = await Promise.all([
-        getDistricts(),
-        // getTaluks(),
-        // getVillages()
-      ]);
+      const d = await getDistricts();
       setDistricts(Array.isArray(d) ? d : []);
-      setTaluks(Array.isArray(t) ? t : []);
-      setVillages(Array.isArray(v) ? v : []);
+      setTaluks([]);
+      setVillages([]);
     } catch (error) {
       console.error("Error fetching location masters:", error);
     } finally {

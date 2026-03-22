@@ -6,8 +6,21 @@ export default function PropertyAssetsTabs({
     propertyId,
     assets,
     setAssets,
-    isReadOnly
+    isReadOnly,
+    propertyData
 }) {
+    const propertyType = String(
+        propertyData?.sale_type ||
+        propertyData?.property_type ||
+        propertyData?.type ||
+        propertyData?.property_use ||
+        ""
+    ).trim().toUpperCase();
+    const liveImageUrl = propertyData?.live_image || "";
+    const drawingImageUrl = propertyData?.drawing_image || "";
+    const hasLiveImage = Boolean(liveImageUrl);
+    const hasDrawingImage = Boolean(drawingImageUrl) && (propertyType === "FLAT" || propertyType === "PLOT");
+
     const imageAssets = useMemo(
         () => assets.filter(a => a.asset_type === "image"),
         [assets]
@@ -18,11 +31,53 @@ export default function PropertyAssetsTabs({
         [assets]
     );
 
-    const [activeTab, setActiveTab] = useState("images");
+    const [activeTab, setActiveTab] = useState(hasLiveImage ? "live-image" : "images");
     const [downloadMode, setDownloadMode] = useState(false);
     const [deleteMode, setDeleteMode] = useState(false);
     const [selectedAssets, setSelectedAssets] = useState([]);
     const [previewIndex, setPreviewIndex] = useState(null);
+
+    const tabClass = (tab) =>
+        `py-3 text-[10px] font-bold uppercase tracking-widest ${activeTab === tab ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-400"}`;
+
+    const renderSingleImageTab = (imageUrl, emptyLabel) => (
+        <div className="space-y-4">
+            {imageUrl ? (
+                <div className="space-y-3">
+                    <div className="border rounded-2xl overflow-hidden bg-gray-50">
+                        <img
+                            src={imageUrl}
+                            alt={emptyLabel}
+                            className="w-full max-h-[28rem] object-contain bg-white"
+                        />
+                    </div>
+                    <div className="flex gap-3">
+                        <a
+                            href={imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-bold text-blue-600 hover:underline"
+                        >
+                            Open Full Image
+                        </a>
+                    </div>
+                </div>
+            ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-12 text-center text-xs font-bold uppercase tracking-widest text-gray-400">
+                    {emptyLabel} not available
+                </div>
+            )}
+        </div>
+    );
+
+    React.useEffect(() => {
+        if (activeTab === "live-image" && !hasLiveImage) {
+            setActiveTab(hasDrawingImage ? "drawing-image" : "images");
+        }
+        if (activeTab === "drawing-image" && !hasDrawingImage) {
+            setActiveTab(hasLiveImage ? "live-image" : "images");
+        }
+    }, [activeTab, hasDrawingImage, hasLiveImage]);
 
     const exitActionMode = () => {
         setDownloadMode(false);
@@ -61,21 +116,39 @@ export default function PropertyAssetsTabs({
     return (
         <div className="space-y-4">
             <div className="flex gap-6">
+                {hasLiveImage && (
+                    <button
+                        onClick={() => setActiveTab("live-image")}
+                        className={tabClass("live-image")}
+                    >
+                        Live Image
+                    </button>
+                )}
+                {hasDrawingImage && (
+                    <button
+                        onClick={() => setActiveTab("drawing-image")}
+                        className={tabClass("drawing-image")}
+                    >
+                        Drawing Image
+                    </button>
+                )}
                 <button
                     onClick={() => setActiveTab("images")}
-                    className={`py-3 text-[10px] font-bold uppercase tracking-widest ${activeTab === "images" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-400"
-                        }`}
+                    className={tabClass("images")}
                 >
                     Images
                 </button>
                 <button
                     onClick={() => setActiveTab("documents")}
-                    className={`py-3 text-[10px] font-bold uppercase tracking-widest ${activeTab === "documents" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-400"
-                        }`}
+                    className={tabClass("documents")}
                 >
                     Documents
                 </button>
             </div>
+
+            {activeTab === "live-image" && renderSingleImageTab(liveImageUrl, "Live image")}
+
+            {activeTab === "drawing-image" && renderSingleImageTab(drawingImageUrl, "Drawing image")}
 
             {activeTab === "images" && (
                 <div className="space-y-4">

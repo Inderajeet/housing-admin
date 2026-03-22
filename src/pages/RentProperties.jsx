@@ -898,6 +898,7 @@ const RentProperties = () => {
                     assets={assets}
                     setAssets={setAssets}
                     isReadOnly={isReadOnly}
+                    propertyData={selected}
                   />
                 )}
 

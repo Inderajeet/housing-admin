@@ -17,26 +17,24 @@ const Sidebar = () => {
   const renderIcon = (icon, isActive) => {
     const rawIcon = icon && (icon.ReactElement || icon);
     if (React.isValidElement(rawIcon)) {
-      return React.cloneElement(rawIcon, { 
-        className: `w-5 h-5 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}` 
+      return React.cloneElement(rawIcon, {
+        className: `w-5 h-5 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`
       });
     }
     if (typeof rawIcon === 'function') {
-      return React.createElement(rawIcon, { 
-        className: `w-5 h-5 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}` 
+      return React.createElement(rawIcon, {
+        className: `w-5 h-5 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`
       });
     }
     return null;
   };
 
-  const navClass = ({ isActive }) => 
-    `w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-      isActive ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+  const navClass = ({ isActive }) =>
+    `w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
     }`;
 
   const subNavClass = ({ isActive }) =>
-    `w-full flex items-center space-x-3 px-4 py-2 rounded-lg transition-all text-sm group ${
-      isActive ? 'text-blue-400 font-bold bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
+    `w-full flex items-center space-x-3 px-4 py-2 rounded-lg transition-all text-sm group ${isActive ? 'text-blue-400 font-bold bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
     }`;
 
   return (
@@ -55,8 +53,8 @@ const Sidebar = () => {
 
         {/* --- Rent Properties Section --- */}
         <div>
-          <button 
-            onClick={() => toggleMenu('rent')} 
+          <button
+            onClick={() => toggleMenu('rent')}
             className="w-full flex items-center justify-between px-4 py-3 text-slate-400 hover:text-white group transition-all"
           >
             <div className="flex items-center space-x-3">
@@ -65,7 +63,7 @@ const Sidebar = () => {
             </div>
             <span className={`text-[10px] transition-transform duration-200 ${openMenus.rent ? 'rotate-180' : ''}`}>▼</span>
           </button>
-          
+
           {openMenus.rent && (
             <div className="ml-9 mt-1 space-y-1 border-l border-slate-800 pl-2">
               <NavLink to="/rent/properties" className={subNavClass}>
@@ -93,8 +91,8 @@ const Sidebar = () => {
 
         {/* --- Sale Properties Section --- */}
         <div>
-          <button 
-            onClick={() => toggleMenu('sale')} 
+          <button
+            onClick={() => toggleMenu('sale')}
             className="w-full flex items-center justify-between px-4 py-3 text-slate-400 hover:text-white group transition-all"
           >
             <div className="flex items-center space-x-3">
@@ -103,7 +101,7 @@ const Sidebar = () => {
             </div>
             <span className={`text-[10px] transition-transform duration-200 ${openMenus.sale ? 'rotate-180' : ''}`}>▼</span>
           </button>
-          
+
           {openMenus.sale && (
             <div className="ml-9 mt-1 space-y-1 border-l border-slate-800 pl-2">
               <NavLink to="/sale/properties" className={subNavClass}>
@@ -129,15 +127,20 @@ const Sidebar = () => {
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Bookings</span>
               </NavLink>
+              {/* Plot Properties */}
+              <NavLink to="/plots" onClick={() => setActiveProject(null)} className={navClass}>
+                {renderIcon(ICONS.Plots, location.pathname === '/plots')}
+                <span className="font-medium text-sm">Plot Properties</span>
+              </NavLink>
+              <NavLink to="/flats" onClick={() => setActiveProject(null)} className={navClass}>
+                {renderIcon(ICONS.Plots, location.pathname.startsWith('/flats'))}
+                <span className="font-medium text-sm">Flat Properties</span>
+              </NavLink>
             </div>
           )}
         </div>
 
-        {/* Plot Properties */}
-        <NavLink to="/plots" onClick={() => setActiveProject(null)} className={navClass}>
-          {renderIcon(ICONS.Plots, location.pathname === '/plots')}
-          <span className="font-medium text-sm">Plot Properties</span>
-        </NavLink>
+
 
       </nav>
 
