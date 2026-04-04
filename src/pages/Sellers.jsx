@@ -130,7 +130,7 @@ const Sellers = ({ title = "Sellers Directory", typeFilter = null }) => {
               <div className="grid grid-cols-2 gap-6">
                 {[
                   ['name', 'Full Name'], ['phone_number', 'Phone'], 
-                  ['alternate_phone', 'Alt Phone'], ['email', 'Email']
+                  ['alternate_phone', 'Owner Phone'], ['email', 'Email']
                 ].map(([key, label]) => (
                   <div key={key} className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-slate-400">{label}</label>
