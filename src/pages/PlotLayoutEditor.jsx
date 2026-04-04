@@ -222,7 +222,7 @@ const PlotLayoutEditor = () => {
             <div className="flex-1 flex flex-col min-w-0 relative">
                 <div className="h-20 bg-white border-b flex items-center justify-between px-10 z-50 shrink-0">
                     <div className="flex items-center gap-8">
-                        <button onClick={() => navigate('/plots')} className="text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all">← Back</button>
+                        <button onClick={() => navigate('/admin/plots')} className="text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all">← Back</button>
                         {/* CHANGED: Dynamic Plot ID Display */}
                         <h1 className="font-black text-slate-800 uppercase text-lg tracking-tighter">Plot: <span className="text-blue-600">{activeProject?.formatted_id || id}</span></h1>
                     </div>

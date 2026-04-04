@@ -21,6 +21,7 @@ import FlatLayoutEditor from './pages/FlatLayoutEditor';
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
+const ADMIN_BASE = '/admin';
 
 // Placeholder for new components
 const Placeholder = ({ title }) => <div className="p-10 text-2xl font-bold text-slate-400">{title} Component</div>;
@@ -41,45 +42,46 @@ const App = () => {
               <main className="flex-1 overflow-y-auto p-6 md:p-8">
                 <div className="max-w-[1600px] mx-auto">
                   <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/rent/premium-properties" element={<PremiumProperties type='rent' />} />
-                    <Route path="/sale/premium-properties" element={<PremiumProperties type='sale' />} />
-                    <Route path="/sale/bookings" element={<Bookings type='sale' />} />
-                    <Route path="/rent/bookings" element={<Bookings type='rent' />} />
+                    <Route path="/" element={<Navigate to={`${ADMIN_BASE}/dashboard`} replace />} />
+                    <Route path={ADMIN_BASE} element={<Navigate to={`${ADMIN_BASE}/dashboard`} replace />} />
+                    <Route path={`${ADMIN_BASE}/dashboard`} element={<Dashboard />} />
+                    <Route path={`${ADMIN_BASE}/rent/premium-properties`} element={<PremiumProperties type='rent' />} />
+                    <Route path={`${ADMIN_BASE}/sale/premium-properties`} element={<PremiumProperties type='sale' />} />
+                    <Route path={`${ADMIN_BASE}/sale/bookings`} element={<Bookings type='sale' />} />
+                    <Route path={`${ADMIN_BASE}/rent/bookings`} element={<Bookings type='rent' />} />
                     <Route
-                      path="/rent/owners"
+                      path={`${ADMIN_BASE}/rent/owners`}
                       element={<Sellers title="Rent Owners" typeFilter="rent" />}
                     />
 
                     {/* 2. Sale Sellers Section */}
                     <Route
-                      path="/sale/sellers"
+                      path={`${ADMIN_BASE}/sale/sellers`}
                       element={<Sellers title="Property Sellers" typeFilter="sale" />}
                     />
-                    <Route path="/rent/properties" element={<RentProperties />} />
+                    <Route path={`${ADMIN_BASE}/rent/properties`} element={<RentProperties />} />
 
                     {/* Sale Routes */}
-                    <Route path="/sale/properties" element={<SaleProperties />} />
-                    <Route path="/sale/buyers" element={<Buyers title="Property Buyers" typeFilter="sale" />} />
+                    <Route path={`${ADMIN_BASE}/sale/properties`} element={<SaleProperties />} />
+                    <Route path={`${ADMIN_BASE}/sale/buyers`} element={<Buyers title="Property Buyers" typeFilter="sale" />} />
 
                     {/* RENT SECTION */}
                     <Route
-                      path="/rent/enquiries"
+                      path={`${ADMIN_BASE}/rent/enquiries`}
                       element={<Enquiries title="Rent Enquiries" typeFilter="rent" />}
                     />
 
                     {/* SALE SECTION (Includes Plots, Flats, Land) */}
                     <Route
-                      path="/sale/enquiries"
+                      path={`${ADMIN_BASE}/sale/enquiries`}
                       element={<Enquiries title="Sale Enquiries" typeFilter="sale" />}
                     />
 
                     {/* Plot Routes */}
-                    <Route path="/plots" element={<PlotProperties />} />
-                    <Route path="/plots/editor/:id" element={<PlotLayoutEditor />} />
-                    <Route path="/flats" element={<FlatProperties />} />
-                    <Route path="/flats/editor/:id" element={<FlatLayoutEditor />} />
+                    <Route path={`${ADMIN_BASE}/plots`} element={<PlotProperties />} />
+                    <Route path={`${ADMIN_BASE}/plots/editor/:id`} element={<PlotLayoutEditor />} />
+                    <Route path={`${ADMIN_BASE}/flats`} element={<FlatProperties />} />
+                    <Route path={`${ADMIN_BASE}/flats/editor/:id`} element={<FlatLayoutEditor />} />
                   </Routes>
                 </div>
               </main>

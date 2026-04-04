@@ -55,7 +55,7 @@ const PlotProperties = () => {
         formatted_id: p.formatted_id,
         layout: layoutResponse.data || []
       });
-      navigate(`/plots/editor/${p.property_id}`);
+      navigate(`/admin/plots/editor/${p.property_id}`);
     } catch (e) {
       console.error(e);
     }

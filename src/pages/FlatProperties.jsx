@@ -46,7 +46,7 @@ const FlatProperties = () => {
         formatted_id: p.formatted_id,
         layout: layoutResponse.data || [],
       });
-      navigate(`/flats/editor/${p.property_id}`);
+      navigate(`/admin/flats/editor/${p.property_id}`);
     } catch (e) {
       console.error(e);
     }

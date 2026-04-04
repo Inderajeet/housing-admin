@@ -230,7 +230,7 @@ const FlatLayoutEditor = () => {
                 <div className="h-20 bg-white border-b flex items-center justify-between px-10 z-50 shrink-0">
                     <div className="flex items-center gap-8">
                         <button
-                            onClick={() => navigate('/flats')}
+                            onClick={() => navigate('/admin/flats')}
                             className="text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-all"
                         >
                             ← Back

@@ -3,6 +3,8 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { ICONS } from '../constants';
 import { useApp } from '../App';
 
+const ADMIN_BASE = '/admin';
+
 const Sidebar = () => {
   const { setActiveProject } = useApp();
   const location = useLocation();
@@ -46,8 +48,8 @@ const Sidebar = () => {
 
       <nav className="flex-1 mt-6 px-4 space-y-1 overflow-y-auto">
         {/* Dashboard */}
-        <NavLink to="/dashboard" onClick={() => setActiveProject(null)} className={navClass}>
-          {renderIcon(ICONS.Dashboard, location.pathname === '/dashboard')}
+        <NavLink to={`${ADMIN_BASE}/dashboard`} onClick={() => setActiveProject(null)} className={navClass}>
+          {renderIcon(ICONS.Dashboard, location.pathname === `${ADMIN_BASE}/dashboard`)}
           <span className="font-medium text-sm">Dashboard</span>
         </NavLink>
 
@@ -58,7 +60,7 @@ const Sidebar = () => {
             className="w-full flex items-center justify-between px-4 py-3 text-slate-400 hover:text-white group transition-all"
           >
             <div className="flex items-center space-x-3">
-              {renderIcon(ICONS.Rent, location.pathname.startsWith('/rent'))}
+              {renderIcon(ICONS.Rent, location.pathname.startsWith(`${ADMIN_BASE}/rent`))}
               <span className="font-medium text-sm">Rent Properties</span>
             </div>
             <span className={`text-[10px] transition-transform duration-200 ${openMenus.rent ? 'rotate-180' : ''}`}>▼</span>
@@ -66,22 +68,22 @@ const Sidebar = () => {
 
           {openMenus.rent && (
             <div className="ml-9 mt-1 space-y-1 border-l border-slate-800 pl-2">
-              <NavLink to="/rent/properties" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/rent/properties`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Properties</span>
-              </NavLink><NavLink to="/rent/premium-properties" className={subNavClass}>
+              </NavLink><NavLink to={`${ADMIN_BASE}/rent/premium-properties`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Premium Properties</span>
               </NavLink>
-              <NavLink to="/rent/owners" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/rent/owners`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Owners</span>
               </NavLink>
-              <NavLink to="/rent/enquiries" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/rent/enquiries`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Enquiries</span>
               </NavLink>
-              <NavLink to="/rent/bookings" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/rent/bookings`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Bookings</span>
               </NavLink>
@@ -96,7 +98,7 @@ const Sidebar = () => {
             className="w-full flex items-center justify-between px-4 py-3 text-slate-400 hover:text-white group transition-all"
           >
             <div className="flex items-center space-x-3">
-              {renderIcon(ICONS.Sale, location.pathname.startsWith('/sale'))}
+              {renderIcon(ICONS.Sale, location.pathname.startsWith(`${ADMIN_BASE}/sale`))}
               <span className="font-medium text-sm">Sale Properties</span>
             </div>
             <span className={`text-[10px] transition-transform duration-200 ${openMenus.sale ? 'rotate-180' : ''}`}>▼</span>
@@ -104,36 +106,36 @@ const Sidebar = () => {
 
           {openMenus.sale && (
             <div className="ml-9 mt-1 space-y-1 border-l border-slate-800 pl-2">
-              <NavLink to="/sale/properties" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/sale/properties`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Properties</span>
-              </NavLink><NavLink to="/sale/premium-properties" className={subNavClass}>
+              </NavLink><NavLink to={`${ADMIN_BASE}/sale/premium-properties`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Premium Properties</span>
               </NavLink>
-              <NavLink to="/sale/sellers" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/sale/sellers`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Sellers</span>
               </NavLink>
-              <NavLink to="/sale/buyers" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/sale/buyers`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Buyers</span>
               </NavLink>
-              <NavLink to="/sale/enquiries" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/sale/enquiries`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Enquiries</span>
               </NavLink>
-              <NavLink to="/sale/bookings" className={subNavClass}>
+              <NavLink to={`${ADMIN_BASE}/sale/bookings`} className={subNavClass}>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600 group-[.text-blue-400]:bg-blue-400"></span>
                 <span>Bookings</span>
               </NavLink>
               {/* Plot Properties */}
-              <NavLink to="/plots" onClick={() => setActiveProject(null)} className={navClass}>
-                {renderIcon(ICONS.Plots, location.pathname === '/plots')}
+              <NavLink to={`${ADMIN_BASE}/plots`} onClick={() => setActiveProject(null)} className={navClass}>
+                {renderIcon(ICONS.Plots, location.pathname === `${ADMIN_BASE}/plots`)}
                 <span className="font-medium text-sm">Plot Properties</span>
               </NavLink>
-              <NavLink to="/flats" onClick={() => setActiveProject(null)} className={navClass}>
-                {renderIcon(ICONS.Plots, location.pathname.startsWith('/flats'))}
+              <NavLink to={`${ADMIN_BASE}/flats`} onClick={() => setActiveProject(null)} className={navClass}>
+                {renderIcon(ICONS.Plots, location.pathname.startsWith(`${ADMIN_BASE}/flats`))}
                 <span className="font-medium text-sm">Flat Properties</span>
               </NavLink>
             </div>
