@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import DataTable from '../components/DataTable';
 import LocationSelector from '../components/LocationSelector';
@@ -13,6 +13,7 @@ import {
   createRentProperty,
   updateRentProperty,
 } from '../api/rent.api';
+import { reverseGeocode } from '../utils/geocode';
 import {
   DndContext,
   closestCenter
@@ -105,6 +106,7 @@ const RentProperties = () => {
   const [activeTab, setActiveTab] = useState('details');
   const [assets, setAssets] = useState([]);
   const [assetLoading, setAssetLoading] = useState(false);
+  const [geocodingAddress, setGeocodingAddress] = useState(false);
 
   const [filters, setFilters] = useState({
     dateRange: 'all',
@@ -423,6 +425,22 @@ const RentProperties = () => {
     });
   };
 
+  // When both lat & lng are filled, reverse-geocode to auto-fill address
+  const handleCoordBlur = useCallback(async (latVal, lngVal) => {
+    const lat = parseFloat(latVal);
+    const lng = parseFloat(lngVal);
+    if (isNaN(lat) || isNaN(lng)) return;
+    setGeocodingAddress(true);
+    try {
+      const address = await reverseGeocode(lat, lng);
+      if (address) setForm(prev => ({ ...prev, address }));
+    } catch {
+      // silently ignore geocoding errors
+    } finally {
+      setGeocodingAddress(false);
+    }
+  }, []);
+
   // --- UPDATED EXPORT LOGIC ---
   const handleExport = () => {
     const dataToExport = filteredProperties.map(p => ({
@@ -629,17 +647,13 @@ const RentProperties = () => {
                   DETAILS
                 </button>
 
-                {/* ONLY show Assets if property exists */}
-                {selected?.property_id && (
-                  <button
-                    onClick={() => setActiveTab('assets')}
-                    className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
-        ${activeTab === 'assets' ? 'border-b-2 border-blue-600 text-blue-600'
-                        : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    ASSETS
-                  </button>
-                )}
+                <button
+                  onClick={() => setActiveTab('assets')}
+                  className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
+                    ${activeTab === 'assets' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  ASSETS
+                </button>
               </div>
 
               <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
@@ -835,8 +849,20 @@ const RentProperties = () => {
                     </div>
 
                     <div className="flex flex-col space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
-                      <textarea disabled={isReadOnly} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]" />
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
+                        {geocodingAddress && (
+                          <span className="text-[9px] font-bold text-blue-500 uppercase tracking-wide animate-pulse">
+                            Fetching address…
+                          </span>
+                        )}
+                      </div>
+                      <textarea
+                        disabled={isReadOnly}
+                        value={form.address}
+                        onChange={e => setForm({ ...form, address: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]"
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-8">
@@ -847,6 +873,8 @@ const RentProperties = () => {
                           disabled={isReadOnly}
                           value={form.latitude}
                           onChange={e => setForm({ ...form, latitude: e.target.value })}
+                          onBlur={e => handleCoordBlur(e.target.value, form.longitude)}
+                          placeholder="e.g. 11.0168"
                           className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('latitude')} font-semibold`}
                         />
                         {validationErrors.latitude && (
@@ -860,6 +888,8 @@ const RentProperties = () => {
                           disabled={isReadOnly}
                           value={form.longitude}
                           onChange={e => setForm({ ...form, longitude: e.target.value })}
+                          onBlur={e => handleCoordBlur(form.latitude, e.target.value)}
+                          placeholder="e.g. 76.9558"
                           className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('longitude')} font-semibold`}
                         />
                         {validationErrors.longitude && (
@@ -892,13 +922,14 @@ const RentProperties = () => {
                   </div>
                 )}
 
-                {activeTab === 'assets' && selected?.property_id && (
+                {activeTab === 'assets' && (
                   <PropertyAssetsTabs
-                    propertyId={selected.property_id}
+                    propertyId={selected?.property_id || null}
                     assets={assets}
                     setAssets={setAssets}
                     isReadOnly={isReadOnly}
-                    propertyData={selected}
+                    propertyData={selected || form}
+                    mode={mode}
                   />
                 )}
 

@@ -18,6 +18,7 @@ import PremiumProperties from './components/PremiumProperties';
 import Bookings from './pages/Bookings';
 import FlatProperties from './pages/FlatProperties';
 import FlatLayoutEditor from './pages/FlatLayoutEditor';
+import Locations from './pages/Locations';
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -76,6 +77,9 @@ const App = () => {
                       path={`${ADMIN_BASE}/sale/enquiries`}
                       element={<Enquiries title="Sale Enquiries" typeFilter="sale" />}
                     />
+
+                    {/* Locations */}
+                    <Route path={`${ADMIN_BASE}/locations`} element={<Locations />} />
 
                     {/* Plot Routes */}
                     <Route path={`${ADMIN_BASE}/plots`} element={<PlotProperties />} />

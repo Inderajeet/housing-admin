@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import DataTable from '../components/DataTable';
 import LocationSelector from '../components/LocationSelector';
@@ -11,8 +11,10 @@ import {
   getSaleProperties,
   createSaleProperty,
   updateSaleProperty,
+  uploadDrawingImage,
 } from '../api/sale.api';
 import PropertyAssetsTabs from '../components/PropertyAssetsTabs';
+import { reverseGeocode } from '../utils/geocode';
 
 const EMPTY_FORM = {
   seller_name: '',
@@ -93,6 +95,7 @@ const SaleProperties = () => {
   const [activeTab, setActiveTab] = useState('details');
   const [assets, setAssets] = useState([]);
   const [assetLoading, setAssetLoading] = useState(false);
+  const [geocodingAddress, setGeocodingAddress] = useState(false);
 
   const [filters, setFilters] = useState({
     dateRange: 'all',
@@ -437,6 +440,22 @@ const SaleProperties = () => {
     });
   };
 
+  // When both lat & lng are filled, reverse-geocode to auto-fill address
+  const handleCoordBlur = useCallback(async (latVal, lngVal) => {
+    const lat = parseFloat(latVal);
+    const lng = parseFloat(lngVal);
+    if (isNaN(lat) || isNaN(lng)) return;
+    setGeocodingAddress(true);
+    try {
+      const address = await reverseGeocode(lat, lng);
+      if (address) setForm(prev => ({ ...prev, address }));
+    } catch {
+      // silently ignore geocoding errors
+    } finally {
+      setGeocodingAddress(false);
+    }
+  }, []);
+
   const handleExport = () => {
     const dataToExport = filteredProperties.map(p => ({
       'Property ID': p.formatted_id,
@@ -661,16 +680,13 @@ const SaleProperties = () => {
                   DETAILS
                 </button>
 
-                {/* ONLY show Assets if property exists */}
-                {selected?.property_id && (
-                  <button
-                    onClick={() => setActiveTab('assets')}
-                    className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
-                      ${activeTab === 'assets' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    ASSETS
-                  </button>
-                )}
+                <button
+                  onClick={() => setActiveTab('assets')}
+                  className={`py-3 text-[10px] font-bold uppercase tracking-widest transition-all
+                    ${activeTab === 'assets' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  ASSETS
+                </button>
               </div>
 
               <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
@@ -846,18 +862,32 @@ const SaleProperties = () => {
                     </div>
 
                     <div className="flex flex-col space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
-                      <textarea disabled={isReadOnly} value={form.address} onChange={e => handleChange('address', e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]" />
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Address</label>
+                        {geocodingAddress && (
+                          <span className="text-[9px] font-bold text-blue-500 uppercase tracking-wide animate-pulse">
+                            Fetching address…
+                          </span>
+                        )}
+                      </div>
+                      <textarea
+                        disabled={isReadOnly}
+                        value={form.address}
+                        onChange={e => handleChange('address', e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-300 font-semibold min-h-[80px]"
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-8">
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Latitude</label>
-                        <input 
+                        <input
                           data-field="latitude"
-                          disabled={isReadOnly} 
-                          value={form.latitude} 
-                          onChange={e => handleChange('latitude', e.target.value)} 
+                          disabled={isReadOnly}
+                          value={form.latitude}
+                          onChange={e => handleChange('latitude', e.target.value)}
+                          onBlur={e => handleCoordBlur(e.target.value, form.longitude)}
+                          placeholder="e.g. 11.0168"
                           className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('latitude')} font-semibold`}
                         />
                         {validationErrors.latitude && (
@@ -866,11 +896,13 @@ const SaleProperties = () => {
                       </div>
                       <div className="flex flex-col space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Longitude</label>
-                        <input 
+                        <input
                           data-field="longitude"
-                          disabled={isReadOnly} 
-                          value={form.longitude} 
-                          onChange={e => handleChange('longitude', e.target.value)} 
+                          disabled={isReadOnly}
+                          value={form.longitude}
+                          onChange={e => handleChange('longitude', e.target.value)}
+                          onBlur={e => handleCoordBlur(form.latitude, e.target.value)}
+                          placeholder="e.g. 76.9558"
                           className={`w-full px-4 py-2.5 rounded-xl border ${getValidationStyle('longitude')} font-semibold`}
                         />
                         {validationErrors.longitude && (
@@ -903,13 +935,20 @@ const SaleProperties = () => {
                   </div>
                 )}
 
-                {activeTab === 'assets' && selected?.property_id && (
+                {activeTab === 'assets' && (
                   <PropertyAssetsTabs
-                    propertyId={selected.property_id}
+                    propertyId={selected?.property_id || null}
                     assets={assets}
                     setAssets={setAssets}
                     isReadOnly={isReadOnly}
-                    propertyData={selected}
+                    propertyData={selected || form}
+                    mode={mode}
+                    onDrawingImageUpload={async (file) => {
+                      const result = await uploadDrawingImage(selected.property_id, file);
+                      // sync the updated drawing_image back into selected
+                      setSelected(prev => ({ ...prev, drawing_image: result?.drawing_image || result?.data?.drawing_image || prev?.drawing_image }));
+                      return result;
+                    }}
                   />
                 )}
               </div>

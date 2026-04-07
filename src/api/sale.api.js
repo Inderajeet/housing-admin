@@ -41,3 +41,14 @@ export const deleteSaleProperty = async (propertyId) => {
     ENDPOINTS.SALE.DELETE(propertyId)
   );
 };
+
+/**
+ * Upload / replace the drawing_image for a sale property (Plot / Flat only).
+ * Returns the updated property object (with new drawing_image URL).
+ */
+export const uploadDrawingImage = async (propertyId, file) => {
+  const fd = new FormData();
+  fd.append('drawing_image', file);
+  const { data } = await api.put(ENDPOINTS.SALE.DRAWING_IMAGE(propertyId), fd);
+  return data;
+};

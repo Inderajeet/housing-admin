@@ -144,6 +144,12 @@ const Sidebar = () => {
 
 
 
+        {/* --- Locations Section --- */}
+        <NavLink to={`${ADMIN_BASE}/locations`} onClick={() => setActiveProject(null)} className={navClass}>
+          {renderIcon(ICONS.Locations, location.pathname === `${ADMIN_BASE}/locations`)}
+          <span className="font-medium text-sm">Locations</span>
+        </NavLink>
+
       </nav>
 
       {/* Profile Section */}
