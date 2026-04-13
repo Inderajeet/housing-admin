@@ -15,16 +15,19 @@ export const PropertyType = Object.freeze({
 });
 
 export const RentStatus = Object.freeze({
-  ACTIVE: 'active',
-  RENTED: 'rented',
+  NIL_BOOKING: 'Nil Booking',
+  TOKEN_PAID: 'Token Paid',
+  ADVANCE_PAID: 'Advance Paid',
+  BOOKED: 'Booked',
+  RENTED_OUT: 'Rented Out',
 });
 
 export const SaleStatus = Object.freeze({
-  AVAILABLE: 'available',
-  BOOKED: 'booked',
-  NEGOTIATION: 'negotiation',
-  CONFIRMED: 'confirmed',
-  FINALIZED: 'finalised',
+  NIL_BOOKING: 'Nil Booking',
+  TOKEN_PAID: 'Token Paid',
+  ADVANCE_PAID: 'Advance Paid',
+  BOOKED: 'Booked',
+  SOLD_OUT: 'Sold Out',
 });
 
 export const SaleType = Object.freeze({

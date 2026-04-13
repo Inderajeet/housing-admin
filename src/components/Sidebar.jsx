@@ -5,7 +5,7 @@ import { useApp } from '../App';
 
 const ADMIN_BASE = '/admin';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen = true, onToggle }) => {
   const { setActiveProject } = useApp();
   const location = useLocation();
 
@@ -40,10 +40,22 @@ const Sidebar = () => {
     }`;
 
   return (
-    <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 shrink-0">
-      <div className="p-6 flex items-center space-x-3 border-b border-slate-800">
-        <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shrink-0">TN</div>
-        <span className="text-xl font-bold tracking-tight truncate">TN Mandi</span>
+    <>
+      <aside className={`bg-slate-900 text-white flex flex-col shadow-xl z-20 shrink-0 transition-all duration-300 ${isOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
+      <div className="p-6 flex items-center justify-between border-b border-slate-800 min-w-0">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shrink-0">TN</div>
+          <span className="text-xl font-bold tracking-tight truncate">TN Mandi</span>
+        </div>
+        <button
+          onClick={onToggle}
+          className="text-slate-400 hover:text-white transition-colors p-1 rounded shrink-0 ml-2"
+          title="Collapse sidebar"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
       </div>
 
       <nav className="flex-1 mt-6 px-4 space-y-1 overflow-y-auto">
@@ -166,7 +178,21 @@ const Sidebar = () => {
           </div>
         </div>
       </div>
-    </aside>
+      </aside>
+
+      {/* Expand button when collapsed */}
+      {!isOpen && (
+        <button
+          onClick={onToggle}
+          className="fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-slate-900 text-white p-2 rounded-r-xl shadow-xl hover:bg-slate-700 transition-colors"
+          title="Expand sidebar"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+    </>
   );
 };
 

@@ -18,6 +18,7 @@ const EMPTY_FORM = {
 
 const Sellers = ({ title = "Sellers Directory", typeFilter = null }) => {
   const [sellers, setSellers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -97,24 +98,43 @@ const Sellers = ({ title = "Sellers Directory", typeFilter = null }) => {
     { header: 'Status', accessor: 'status' }
   ];
 
+  const filteredSellers = searchQuery.trim()
+    ? sellers.filter(s => {
+        const q = searchQuery.toLowerCase();
+        return (s.name || '').toLowerCase().includes(q) ||
+          (s.phone_number || '').includes(q) ||
+          String(s.seller_id || '').includes(q);
+      })
+    : sellers;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
           <p className="text-gray-500 text-xs uppercase tracking-widest">Manage Registry</p>
         </div>
-        <button onClick={() => openModal(null, 'add')} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs">
-          ADD {typeFilter === 'rent' ? 'OWNER' : 'SELLER'}
-        </button>
+        <div className="flex gap-3 items-center">
+          <div className="relative">
+            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search name, phone, ID..."
+              className="pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-slate-500/20 w-52" />
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <button onClick={() => openModal(null, 'add')} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs">
+            ADD {typeFilter === 'rent' ? 'OWNER' : 'SELLER'}
+          </button>
+        </div>
       </div>
 
       {loading ? <Loader text="Fetching data..." /> : (
-        <DataTable 
-          columns={columns} 
-          data={sellers} 
-          onEdit={(s) => openModal(s, 'edit')} 
-          onView={(s) => openModal(s, 'view')} 
+        <DataTable
+          columns={columns}
+          data={filteredSellers}
+          onEdit={(s) => openModal(s, 'edit')}
+          onView={(s) => openModal(s, 'view')}
         />
       )}
 

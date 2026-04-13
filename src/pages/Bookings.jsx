@@ -35,6 +35,7 @@ const Bookings = ({ type = null }) => { // Accept type prop from route
   const [isViewOpen, setIsViewOpen] = useState(false);
   const routeUnitType = type || 'all';
   
+  const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     dateRange: 'all',
     startDate: '',
@@ -154,8 +155,16 @@ const Bookings = ({ type = null }) => { // Accept type prop from route
       });
     }
     
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(b =>
+        (b.buyer_name || b.buyer?.name || '').toLowerCase().includes(q) ||
+        (b.buyer_phone || b.buyer?.phone_number || '').includes(q) ||
+        (b.formatted_id || b.property_id || '').toLowerCase().includes(q)
+      );
+    }
     setFilteredBookings(result);
-  }, [filters, bookings]);
+  }, [filters, bookings, searchQuery]);
 
   const handleExport = () => {
     const dataToExport = filteredBookings.map(b => ({
@@ -292,7 +301,19 @@ const Bookings = ({ type = null }) => { // Accept type prop from route
 
       {/* Filter Bar - Same style as RentProperties */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
-        <div className="flex flex-wrap gap-6 items-end">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Search */}
+          <div className="flex flex-col space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Search</label>
+            <div className="relative">
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buyer, phone, property ID..."
+                className="pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 w-52" />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            </div>
+          </div>
           {/* Only show Unit Type filter if not filtered by route */}
           {!type && (
             <div className="flex flex-col space-y-2">

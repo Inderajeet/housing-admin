@@ -21,6 +21,7 @@ export default function PropertyAssetsTabs({
     propertyData,
     mode = 'edit',
     onDrawingImageUpload,
+    onlyType = null, // 'image' | 'document' | null — when set, hides tab bar and shows only that type
 }) {
     const propertyType = String(
         propertyData?.sale_type ||
@@ -46,7 +47,8 @@ export default function PropertyAssetsTabs({
 
     // Default active tab: live-image if available, else images
     const defaultTab = hasLiveImage ? "live-image" : "images";
-    const [activeTab, setActiveTab] = useState(defaultTab);
+    const forcedTab = onlyType === 'image' ? 'images' : onlyType === 'document' ? 'documents' : null;
+    const [activeTab, setActiveTab] = useState(forcedTab || defaultTab);
 
     const [downloadMode,    setDownloadMode]    = useState(false);
     const [deleteMode,      setDeleteMode]      = useState(false);
@@ -78,7 +80,20 @@ export default function PropertyAssetsTabs({
             const fd = new FormData();
             fd.append("file", file);
             fd.append("asset_type", type);
-            await api.post(`/property-assets/${propertyId}`, fd);
+            try {
+                await api.post(`/property-assets/${propertyId}`, fd);
+            } catch (err) {
+                const status = err?.response?.status;
+                if (status === 413) {
+                    alert(`File "${file.name}" is too large. Please reduce the file size (compress the PDF or use a smaller image) and try again.`);
+                } else {
+                    alert(`Failed to upload "${file.name}": ${err?.message || 'Unknown error'}`);
+                }
+                // Refresh what was uploaded successfully so far
+                const res = await api.get(`/property-assets/${propertyId}`);
+                setAssets(res.data);
+                return;
+            }
         }
         const res = await api.get(`/property-assets/${propertyId}`);
         setAssets(res.data);
@@ -227,25 +242,27 @@ export default function PropertyAssetsTabs({
 
     return (
         <div className="space-y-4">
-            {/* Tab bar */}
-            <div className="flex gap-6 border-b border-gray-100">
-                {hasLiveImage && (
-                    <button onClick={() => setActiveTab("live-image")} className={tabClass("live-image")}>
-                        Live Image
-                    </button>
-                )}
-                {isPlotOrFlat && (
-                    <button onClick={() => setActiveTab("drawing-image")} className={tabClass("drawing-image")}>
-                        Drawing Image
-                    </button>
-                )}
-                <button onClick={() => setActiveTab("images")} className={tabClass("images")}>
-                    Images
-                </button>
-                <button onClick={() => setActiveTab("documents")} className={tabClass("documents")}>
-                    Documents
-                </button>
-            </div>
+            {/* Tab bar — hidden when onlyType is set */}
+            {!onlyType && (
+              <div className="flex gap-6 border-b border-gray-100">
+                  {hasLiveImage && (
+                      <button onClick={() => setActiveTab("live-image")} className={tabClass("live-image")}>
+                          Live Image
+                      </button>
+                  )}
+                  {isPlotOrFlat && (
+                      <button onClick={() => setActiveTab("drawing-image")} className={tabClass("drawing-image")}>
+                          Drawing Image
+                      </button>
+                  )}
+                  <button onClick={() => setActiveTab("images")} className={tabClass("images")}>
+                      Images
+                  </button>
+                  <button onClick={() => setActiveTab("documents")} className={tabClass("documents")}>
+                      Documents
+                  </button>
+              </div>
+            )}
 
             {/* Live Image — read-only, non-add mode only */}
             {activeTab === "live-image" && renderReadOnlyImageTab(liveImageUrl, "Live image")}

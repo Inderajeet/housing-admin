@@ -5,7 +5,6 @@ import { LocationProvider } from './context/LocationContext';
 
 // Pages & Components
 import Sidebar from './components/Sidebar';
-import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import PlotProperties from './pages/PlotProperties';
 import PlotLayoutEditor from './pages/PlotLayoutEditor';
@@ -29,17 +28,16 @@ const Placeholder = ({ title }) => <div className="p-10 text-2xl font-bold text-
 
 const App = () => {
   const [activeProject, setActiveProject] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
     <LocationProvider>
       <AppContext.Provider value={{ activeProject, setActiveProject }}>
         <BrowserRouter>
           <div className="flex h-screen w-full bg-gray-50 font-sans">
-            <Sidebar />
+            <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} />
 
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-              <Navbar title={activeProject ? `Architect: ${activeProject.property_id}` : "Management"} />
-
               <main className="flex-1 overflow-y-auto p-6 md:p-8">
                 <div className="max-w-[1600px] mx-auto">
                   <Routes>

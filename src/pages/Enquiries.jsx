@@ -26,6 +26,7 @@ const Enquiries = ({ typeFilter = null }) => {
   const [isCreateOpen, setIsCreateOpen]         = useState(false);
   const [enquiryType, setEnquiryType]           = useState('buyer');
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     dateRange: 'all',
     startDate: '',
@@ -100,8 +101,16 @@ const Enquiries = ({ typeFilter = null }) => {
         return true;
       });
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(e =>
+        (e.buyer_phone || e.seller_phone || e.contact_phone || '').includes(q) ||
+        (e.formatted_id || '').toLowerCase().includes(q) ||
+        (e.buyer_name || e.seller_name || '').toLowerCase().includes(q)
+      );
+    }
     setFilteredEnquiries(result);
-  }, [filters, enquiries]);
+  }, [filters, enquiries, searchQuery]);
 
   // ── Export ────────────────────────────────────────────────────────────────
   const handleExport = () => {
@@ -293,7 +302,19 @@ const Enquiries = ({ typeFilter = null }) => {
 
       {/* Filter Bar */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
-        <div className="flex flex-wrap gap-6 items-end">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Search */}
+          <div className="flex flex-col space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Search</label>
+            <div className="relative">
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Phone, ID, name..."
+                className="pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-blue-500/20 w-48" />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            </div>
+          </div>
           {/* Buyer / Seller toggle */}
           <div className="flex flex-col space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Enquiry Type</label>
